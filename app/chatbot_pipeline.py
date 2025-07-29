@@ -13,7 +13,7 @@ load_dotenv()
 from . import config
 from .prompt_manager import prompt_manager
 from .memory_manager import memory_manager
-from .hot_reload_manager import hot_reload_manager # 导入全局管理器实例
+# from .hot_reload_manager import hot_reload_manager # 导入全局管理器实例
 
 # 导入LangChain核心组件
 from langchain_openai import ChatOpenAI
@@ -46,11 +46,11 @@ class ChatbotPipeline:
         self.executor = ThreadPoolExecutor(max_workers=os.cpu_count() or 4)
         self._setup_llm()
         
-        # ✅ 关键改进：将自己注册为热重载的回调接收者
-        if hot_reload_manager and config.ENABLE_HOT_RELOAD:
-            # self._on_prompt_reload 就是回调函数，当文件变化时它会被调用
-            hot_reload_manager.add_callback(self._on_prompt_reload)
-            hot_reload_manager.start()
+        # # ✅ 关键改进：将自己注册为热重载的回调接收者
+        # if hot_reload_manager and config.ENABLE_HOT_RELOAD:
+        #     # self._on_prompt_reload 就是回调函数，当文件变化时它会被调用
+        #     hot_reload_manager.add_callback(self._on_prompt_reload)
+        #     hot_reload_manager.start()
             
         print("企业级对话机器人初始化完成。")
 
@@ -143,9 +143,9 @@ class ChatbotPipeline:
         if hasattr(self, 'executor'):
             self.executor.shutdown(wait=True)
             
-        # ✅ 关键改进：在关闭时，也从管理器中移除自己的回调，并停止监控
-        if hot_reload_manager:
-            # 检查回调是否存在于集合中，避免KeyError
-            if hasattr(self, '_on_prompt_reload') and self._on_prompt_reload in hot_reload_manager.callbacks:
-                 hot_reload_manager.remove_callback(self._on_prompt_reload)
-            hot_reload_manager.stop()
+        # # ✅ 关键改进：在关闭时，也从管理器中移除自己的回调，并停止监控
+        # if hot_reload_manager:
+        #     # 检查回调是否存在于集合中，避免KeyError
+        #     if hasattr(self, '_on_prompt_reload') and self._on_prompt_reload in hot_reload_manager.callbacks:
+        #          hot_reload_manager.remove_callback(self._on_prompt_reload)
+        #     hot_reload_manager.stop()

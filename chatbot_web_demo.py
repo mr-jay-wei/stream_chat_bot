@@ -14,7 +14,7 @@ from app import config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 # app = FastAPI(title="企业级AI对话机器人", description="一个支持实时流式响应、具备记忆和可热重载角色的高级对话平台")
-
+from app.hot_reload_manager import hot_reload_manager
 # 全局单例
 pipeline: ChatbotPipeline = None
 
@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
         logger.info("对话机器人初始化完成。")
         
         # 启动热重载
-        from app.hot_reload_manager import hot_reload_manager
+        # from app.hot_reload_manager import hot_reload_manager
         if hot_reload_manager and config.ENABLE_HOT_RELOAD:
             hot_reload_manager.start()
             
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
 
     # --- 应用关闭时执行 ---
     logger.info("应用关闭...")
-    from app.hot_reload_manager import hot_reload_manager
+    # from app.hot_reload_manager import hot_reload_manager
     if hot_reload_manager:
         hot_reload_manager.stop()
         
