@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>企业级AI对话机器人</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="一个基于AI大语言模型的企业级对话机器人，支持实时流式响应、上下文记忆和动态角色配置。">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 企业级AI对话机器人</h1>
+        <div id="connectionStatus" class="connection-status disconnected">正在连接...</div>
+        <div id="chatContainer" class="chat-container">
+            <div class="message status-message">欢迎！我是AI-Jay，随时准备为您服务。</div>
+        </div>
+        <div class="input-container">
+            <input type="text" id="questionInput" placeholder="请输入您的问题..." />
+            <button id="sendButton" disabled>发送</button>
+        </div>
+    </div>
+    <script src="/static/main.js"></script>
+</body>
+</html>

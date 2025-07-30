@@ -13,7 +13,6 @@ load_dotenv()
 from . import config
 from .prompt_manager import prompt_manager
 from .memory_manager import memory_manager
-# from .hot_reload_manager import hot_reload_manager # 导入全局管理器实例
 
 # 导入LangChain核心组件
 from langchain_openai import ChatOpenAI
@@ -45,35 +44,12 @@ class ChatbotPipeline:
         print("正在初始化企业级对话机器人...")
         self.executor = ThreadPoolExecutor(max_workers=os.cpu_count() or 4)
         self._setup_llm()
-        
-        # # ✅ 关键改进：将自己注册为热重载的回调接收者
-        # if hot_reload_manager and config.ENABLE_HOT_RELOAD:
-        #     # self._on_prompt_reload 就是回调函数，当文件变化时它会被调用
-        #     hot_reload_manager.add_callback(self._on_prompt_reload)
-        #     hot_reload_manager.start()
-            
         print("企业级对话机器人初始化完成。")
 
-    # ✅ 新增的回调方法
-    def _on_prompt_reload(self, event_type: str, prompt_name: str):
-        """
-        当提示词文件被热重载时，此方法由HotReloadManager自动调用。
-        
-        Args:
-            event_type (str): 事件类型 ('modified', 'created', 'deleted')
-            prompt_name (str): 被改变的提示词名称
-        """
-        print(f"\n🔥 Pipeline收到热重载通知! 事件: {event_type}, 提示词: {prompt_name}")
-        # 在这里，我们可以执行任何需要更新的状态。
-        # 例如，如果未来我们有一些基于Prompt构建并缓存的复杂对象，
-        # 可以在这里清空或重建它们。
-        # 目前，我们只打印一条日志来证明回调链路已经打通。
-        print("✅ Pipeline状态已同步（当前实现无需额外操作）。\n")
-
     def _setup_llm(self):
-        api_key = os.getenv("DeepSeek_api_key")
-        base_url = os.getenv("DeepSeek_base_url")
-        model_name = os.getenv("DeepSeek_model_name")
+        api_key = os.getenv("CLOUD_INFINI_API_KEY")
+        base_url = os.getenv("CLOUD_INFINI_BASE_URL")
+        model_name = os.getenv("CLOUD_INFINI_MODEL_NAME")
 
         if not all([api_key, base_url, model_name]):
             raise ValueError("API密钥或模型配置未找到。请检查.env文件。")
@@ -127,7 +103,7 @@ class ChatbotPipeline:
                 complete_answer = answer.strip()
                 for char in complete_answer:
                     yield StreamEvent(type=StreamEventType.GENERATION_CHUNK, data={"chunk": char}, timestamp=time.time())
-                    await asyncio.sleep(0.02)
+                    # await asyncio.sleep(0.02)
 
             if config.ENABLE_SHORT_TERM_MEMORY:
                 memory_manager.add_conversation(question, complete_answer.strip())
@@ -142,10 +118,3 @@ class ChatbotPipeline:
         """析构函数，在对象销毁时清理资源。"""
         if hasattr(self, 'executor'):
             self.executor.shutdown(wait=True)
-            
-        # # ✅ 关键改进：在关闭时，也从管理器中移除自己的回调，并停止监控
-        # if hot_reload_manager:
-        #     # 检查回调是否存在于集合中，避免KeyError
-        #     if hasattr(self, '_on_prompt_reload') and self._on_prompt_reload in hot_reload_manager.callbacks:
-        #          hot_reload_manager.remove_callback(self._on_prompt_reload)
-        #     hot_reload_manager.stop()
