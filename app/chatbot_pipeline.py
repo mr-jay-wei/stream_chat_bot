@@ -47,9 +47,9 @@ class ChatbotPipeline:
         print("企业级对话机器人初始化完成。")
 
     def _setup_llm(self):
-        api_key = os.getenv("CLOUD_INFINI_API_KEY")
-        base_url = os.getenv("CLOUD_INFINI_BASE_URL")
-        model_name = os.getenv("CLOUD_INFINI_MODEL_NAME")
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        base_url = os.getenv("OPENROUTER_BASE_URL")
+        model_name = os.getenv("OPENROUTER_MODEL_NAME")
 
         if not all([api_key, base_url, model_name]):
             raise ValueError("API密钥或模型配置未找到。请检查.env文件。")
@@ -59,7 +59,7 @@ class ChatbotPipeline:
             model=model_name,
             openai_api_key=api_key,
             openai_api_base=base_url,
-            temperature=0.7,
+            temperature=0.001,
             streaming=True
         )
             
