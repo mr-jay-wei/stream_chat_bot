@@ -1,0 +1,32 @@
+2025-07-31 20:23:38 - test_module - INFO - 🧪 开始测试日志系统...
+2025-07-31 20:23:38 - test_module - INFO - 这是一条信息日志
+2025-07-31 20:23:38 - test_module - WARNING - 这是一条警告信息
+2025-07-31 20:23:38 - test_module - ERROR - 这是一条错误信息
+2025-07-31 20:23:38 - test_module - INFO - ✅ 日志系统测试完成
+2025-07-31 20:30:35 - app.memory_manager - INFO - 短期记忆管理器已初始化 (最大长度: 100,000 字符)
+2025-07-31 20:30:36 - app.hot_reload_manager - INFO - 热重载监控已设置，监控目录: D:\ai\P_project\stream_chat_bot\app\prompts
+2025-07-31 20:30:36 - __main__ - INFO - 🤖 启动企业级AI对话机器人Web演示...
+2025-07-31 20:30:36 - __main__ - INFO - 🌐 访问地址: http://localhost:8003
+2025-07-31 20:30:36 - __main__ - INFO - 🔥 提示词热重载已激活，尝试修改 app/prompts/assistant_prompt.txt 并刷新对话！
+2025-07-31 20:30:36 - __main__ - INFO - 📊 日志系统已启动，日志目录: log
+2025-07-31 20:30:36 - app.memory_manager - INFO - 短期记忆管理器已初始化 (最大长度: 100,000 字符)
+2025-07-31 20:30:37 - app.hot_reload_manager - INFO - 热重载监控已设置，监控目录: D:\ai\P_project\stream_chat_bot\app\prompts
+2025-07-31 20:30:37 - chatbot_web_demo - INFO - 应用启动，正在初始化对话机器人...
+2025-07-31 20:30:37 - app.chatbot_pipeline - INFO - 正在初始化企业级对话机器人...
+2025-07-31 20:30:37 - app.chatbot_pipeline - INFO - 配置大语言模型: openrouter/horizon-alpha
+2025-07-31 20:30:38 - app.chatbot_pipeline - INFO - 企业级对话机器人初始化完成。
+2025-07-31 20:30:38 - chatbot_web_demo - INFO - 对话机器人初始化完成。
+2025-07-31 20:30:38 - app.hot_reload_manager - INFO - 热重载监控已设置，监控目录: D:\ai\P_project\stream_chat_bot\app\prompts
+2025-07-31 20:30:38 - app.hot_reload_manager - INFO - 热重载监控已启动，正在监控: D:\ai\P_project\stream_chat_bot\app\prompts
+2025-07-31 20:30:39 - chatbot_web_demo - INFO - WebSocket连接已建立
+2025-07-31 20:31:16 - chatbot_web_demo - INFO - WebSocket连接已断开
+2025-07-31 20:31:16 - chatbot_web_demo - INFO - WebSocket连接已建立
+2025-07-31 20:31:21 - chatbot_web_demo - INFO - 收到问题: 你是谁？
+2025-07-31 20:31:39 - chatbot_web_demo - INFO - 收到问题: 新英格兰指哪里？
+2025-07-31 20:31:51 - chatbot_web_demo - INFO - 收到问题: 纽约州不是吗？
+2025-07-31 20:32:05 - chatbot_web_demo - INFO - 收到问题: 路易斯安那呢？
+2025-07-31 20:32:31 - chatbot_web_demo - INFO - WebSocket连接已断开
+2025-07-31 20:32:31 - chatbot_web_demo - INFO - 应用关闭...
+2025-07-31 20:32:31 - app.hot_reload_manager - INFO - 热重载监控已停止
+2025-07-31 20:32:31 - chatbot_web_demo - INFO - 正在清理线程池...
+2025-07-31 20:32:31 - chatbot_web_demo - INFO - 线程池已关闭。

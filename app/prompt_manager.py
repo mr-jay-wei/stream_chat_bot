@@ -4,6 +4,10 @@ import os
 from pathlib import Path
 from typing import Dict, Optional, Any
 from langchain_core.prompts import PromptTemplate
+from .logger_config import get_logger
+
+# 配置日志
+logger = get_logger(__name__)
 
 
 class PromptManager:
@@ -135,7 +139,7 @@ class PromptManager:
             self._prompt_cache.pop(prompt_name, None)
             self._template_cache.pop(prompt_name, None)
             
-            print(f"提示词已保存到: {prompt_file}")
+            logger.info(f"提示词已保存到: {prompt_file}")
             
         except Exception as e:
             raise RuntimeError(f"保存提示词文件失败 {prompt_file}: {e}")
@@ -144,7 +148,7 @@ class PromptManager:
         """清除所有缓存。"""
         self._prompt_cache.clear()
         self._template_cache.clear()
-        print("提示词缓存已清除")
+        logger.info("提示词缓存已清除")
     
     def reload_all_prompts(self) -> Dict[str, str]:
         """
@@ -162,9 +166,9 @@ class PromptManager:
             try:
                 content = self.load_prompt(prompt_name)
                 reloaded_prompts[prompt_name] = content
-                print(f"✅ 重新加载: {prompt_name}")
+                logger.info(f"重新加载: {prompt_name}")
             except Exception as e:
-                print(f"❌ 重新加载失败 {prompt_name}: {e}")
+                logger.error(f"重新加载失败 {prompt_name}: {e}")
         
         return reloaded_prompts
     
