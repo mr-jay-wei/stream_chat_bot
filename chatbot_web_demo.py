@@ -2,19 +2,22 @@
 
 import asyncio
 import json
-import logging
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+
 # 导入我们的对话机器人核心
 from app.chatbot_pipeline import ChatbotPipeline, StreamEventType, StreamEvent
 from app import config
-# 配置
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 from app.hot_reload_manager import hot_reload_manager
+
+# 导入新的日志配置
+from app.logger_config import get_logger
+
+# 配置日志
+logger = get_logger(__name__)
 # 全局单例
 pipeline: ChatbotPipeline = None
 
@@ -108,8 +111,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    print("🤖 启动企业级AI对话机器人Web演示...")
-    print("🌐 访问地址: http://localhost:8003")
-    print("🔥 提示词热重载已激活，尝试修改 app/prompts/assistant_prompt.txt 并刷新对话！")
+    logger.info("🤖 启动企业级AI对话机器人Web演示...")
+    logger.info("🌐 访问地址: http://localhost:8003")
+    logger.info("🔥 提示词热重载已激活，尝试修改 app/prompts/assistant_prompt.txt 并刷新对话！")
+    
+    # 显示日志统计信息
+    from app.logger_config import logger_config
+    log_stats = logger_config.get_log_stats()
+    logger.info(f"📊 日志系统已启动，日志目录: {log_stats['log_directory']}")
     
     uvicorn.run("chatbot_web_demo:app", host="0.0.0.0", port=8003, reload=True)

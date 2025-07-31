@@ -63,9 +63,9 @@ uv sync
 
 ```
 # .env file，或者其他大模型的API key，注意变量名
-CLOUD_INFINI_API_KEY=your_api_key_here
-CLOUD_BASE_URL=https://cloud.infini-ai.com/maas/v1/
-CLOUD_MODEL_NAME=deepseek-chat
+API_KEY=your_api_key_here
+BASE_URL=https://cloud.infini-ai.com/maas/v1/
+MODEL_NAME=deepseek-chat
 ```
 
 ### 3. 定义你的机器人角色
@@ -109,6 +109,52 @@ uv run chatbot_web_demo.py
 
 3.  **更换“大脑” (LLM)**:
     -   在 `.env` 文件中修改LLM模型的API信息（`_api_key`, `_base_url`, `_model_name`），即可轻松切换到不同的大语言模型。
+
+## 📊 日志系统
+
+项目内置了完善的日志系统，支持：
+
+-   **📁 按日期自动轮转**: 每天生成新的日志文件
+-   **🗂️ 分类记录**: 普通日志和错误日志分别存储
+-   **🧹 自动清理**: 自动删除超过30天的旧日志文件
+-   **⚙️ 灵活配置**: 可在`app/config.py`中调整日志级别、保留天数等
+
+### 日志管理命令
+
+```bash
+# 查看日志统计信息
+python log_manager.py stats
+
+# 查看今天的聊天日志（最后50行）
+python log_manager.py view --type chatbot
+
+# 查看错误日志
+python log_manager.py view --type error
+
+# 查看指定日期的日志
+python log_manager.py view --type chatbot --date 2025-07-30
+
+# 手动清理30天前的日志
+python log_manager.py cleanup --days 30
+```
+
+### 日志文件位置
+
+-   **普通日志**: `log/chatbot_YYYY-MM-DD.log`
+-   **错误日志**: `log/error_YYYY-MM-DD.log`
+
+### 日志配置选项
+
+在 `app/config.py` 中可以调整以下日志配置：
+
+```python
+LOG_LEVEL = "INFO"  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_DIR = "log"  # 日志目录
+LOG_RETENTION_DAYS = 30  # 日志保留天数
+ENABLE_CONSOLE_LOG = True  # 是否启用控制台日志
+ENABLE_FILE_LOG = True  # 是否启用文件日志
+ENABLE_ERROR_LOG = True  # 是否启用单独的错误日志文件
+```
 
 ## 🤝 贡献与致谢
 

@@ -7,6 +7,10 @@ from datetime import datetime
 import json
 
 from . import config
+from .logger_config import get_logger
+
+# 配置日志
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -65,7 +69,7 @@ class ShortTermMemoryManager:
         self.cleanup_strategy = config.MEMORY_CLEANUP_STRATEGY
         self.sliding_window_size = config.SLIDING_WINDOW_SIZE
         
-        print(f"短期记忆管理器已初始化 (最大长度: {self.max_length:,} 字符)")
+        logger.info(f"短期记忆管理器已初始化 (最大长度: {self.max_length:,} 字符)")
     
     def add_conversation(self, question: str, answer: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -91,7 +95,7 @@ class ShortTermMemoryManager:
         self.conversations.append(conversation)
         self.total_char_length += conversation.char_length
         
-        print(f"📝 添加对话记录 (长度: {conversation.char_length} 字符, 总长度: {self.total_char_length:,} 字符)")
+        logger.debug(f"添加对话记录 (长度: {conversation.char_length} 字符, 总长度: {self.total_char_length:,} 字符)")
         
         # 检查是否需要清理
         self._cleanup_if_needed()
@@ -160,13 +164,13 @@ class ShortTermMemoryManager:
                 self.total_char_length = self.total_char_length - old_length + last_conversation.char_length
                 truncated_count = 1
                 
-                print(f"⚠️  最后一轮对话过长，已截取 {old_length - last_conversation.char_length} 字符")
+                logger.warning(f"最后一轮对话过长，已截取 {old_length - last_conversation.char_length} 字符")
             else:
                 # 如果目标长度太小，直接清空该轮对话
                 self.conversations.clear()
                 self.total_char_length = 0
                 removed_count += 1
-                print(f"⚠️  单轮对话超出限制太多，已清空所有记忆")
+                logger.warning("单轮对话超出限制太多，已清空所有记忆")
         
         # 第三阶段：如果还有多轮对话但仍超长，继续移除（理论上不应该发生）
         while self.total_char_length > self.max_length and len(self.conversations) > 0:
@@ -182,15 +186,15 @@ class ShortTermMemoryManager:
             if truncated_count > 0:
                 messages.append(f"截取了 {truncated_count} 轮对话内容")
             
-            print(f"🧹 自动清理完成：{', '.join(messages)} (当前总长度: {self.total_char_length:,} 字符)")
+            logger.info(f"自动清理完成：{', '.join(messages)} (当前总长度: {self.total_char_length:,} 字符)")
         
         # 最终验证：确保绝对不超过限制
         if self.total_char_length > self.max_length:
-            print(f"❌ 警告：清理后仍超出限制 ({self.total_char_length:,} > {self.max_length:,})")
+            logger.error(f"警告：清理后仍超出限制 ({self.total_char_length:,} > {self.max_length:,})")
             # 紧急处理：直接清空
             self.conversations.clear()
             self.total_char_length = 0
-            print(f"🚨 紧急清空所有记忆以避免超出限制")
+            logger.error("紧急清空所有记忆以避免超出限制")
     
     def _sliding_window_cleanup(self) -> None:
         """滑动窗口清理策略：保持固定数量的对话"""
@@ -205,7 +209,7 @@ class ShortTermMemoryManager:
             removed_conversation = self.conversations.pop(0)
             self.total_char_length -= removed_conversation.char_length
         
-        print(f"🪟 滑动窗口清理了 {excess_count} 轮旧对话 (保留最近 {self.sliding_window_size} 轮)")
+        logger.info(f"滑动窗口清理了 {excess_count} 轮旧对话 (保留最近 {self.sliding_window_size} 轮)")
     
     def get_recent_conversations(self, count: Optional[int] = None) -> List[ConversationTurn]:
         """
@@ -283,7 +287,7 @@ class ShortTermMemoryManager:
         self.conversations.clear()
         self.total_char_length = 0
         
-        print(f"🗑️ 已清空所有记忆 (清除了 {cleared_count} 轮对话)")
+        logger.info(f"已清空所有记忆 (清除了 {cleared_count} 轮对话)")
         return cleared_count
     
     def remove_old_conversations(self, keep_count: int) -> int:
@@ -310,7 +314,7 @@ class ShortTermMemoryManager:
         removed_length = sum(conv.char_length for conv in removed_conversations)
         self.total_char_length -= removed_length
         
-        print(f"🧹 手动移除了 {remove_count} 轮旧对话 (当前总长度: {self.total_char_length:,} 字符)")
+        logger.info(f"手动移除了 {remove_count} 轮旧对话 (当前总长度: {self.total_char_length:,} 字符)")
         return remove_count
     
     def search_conversations(self, keyword: str, limit: int = 10) -> List[Tuple[int, ConversationTurn]]:
@@ -358,11 +362,11 @@ class ShortTermMemoryManager:
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(export_data, f, ensure_ascii=False, indent=2)
             
-            print(f"📤 对话记录已导出到: {file_path}")
+            logger.info(f"对话记录已导出到: {file_path}")
             return True
             
         except Exception as e:
-            print(f"❌ 导出对话记录失败: {e}")
+            logger.error(f"导出对话记录失败: {e}")
             return False
     
     def import_conversations(self, file_path: str, append: bool = False) -> bool:
@@ -396,11 +400,11 @@ class ShortTermMemoryManager:
             # 清理如果需要
             self._cleanup_if_needed()
             
-            print(f"📥 已导入 {len(imported_conversations)} 轮对话记录")
+            logger.info(f"已导入 {len(imported_conversations)} 轮对话记录")
             return True
             
         except Exception as e:
-            print(f"❌ 导入对话记录失败: {e}")
+            logger.error(f"导入对话记录失败: {e}")
             return False
 
 

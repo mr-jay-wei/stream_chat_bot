@@ -20,3 +20,11 @@ SLIDING_WINDOW_SIZE: int = 20 # 滑动窗口大小时使用
 # --- 提示词热重载配置 ---
 ENABLE_HOT_RELOAD: bool = True
 HOT_RELOAD_DEBOUNCE_TIME: float = 0.5 # 防抖时间（秒）
+
+# --- 日志配置 ---
+LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_DIR: str = "log"  # 日志目录
+LOG_RETENTION_DAYS: int = 30  # 日志保留天数
+ENABLE_CONSOLE_LOG: bool = True  # 是否启用控制台日志
+ENABLE_FILE_LOG: bool = True  # 是否启用文件日志
+ENABLE_ERROR_LOG: bool = True  # 是否启用单独的错误日志文件

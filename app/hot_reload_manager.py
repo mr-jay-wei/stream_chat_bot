@@ -10,6 +10,10 @@ from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreat
 
 from .prompt_manager import prompt_manager
 from . import config
+from .logger_config import get_logger
+
+# 配置日志
+logger = get_logger(__name__)
 
 
 class PromptFileHandler(FileSystemEventHandler):
@@ -79,7 +83,7 @@ class PromptFileHandler(FileSystemEventHandler):
             return
         
         try:
-            print(f"🔄 检测到提示词文件修改: {prompt_name}")
+            logger.info(f"检测到提示词文件修改: {prompt_name}")
             
             # 清除所有相关缓存
             prompt_manager._prompt_cache.pop(prompt_name, None)
@@ -87,14 +91,14 @@ class PromptFileHandler(FileSystemEventHandler):
             
             # 重新加载提示词（这会重新填充缓存）
             prompt_manager.load_prompt(prompt_name)
-            print(f"✅ 自动重载完成: {prompt_name}")
+            logger.info(f"自动重载完成: {prompt_name}")
             
             # 调用回调函数
             if self.callback:
                 self.callback("modified", prompt_name)
                 
         except Exception as e:
-            print(f"❌ 自动重载失败 {prompt_name}: {e}")
+            logger.error(f"自动重载失败 {prompt_name}: {e}")
     
     def on_created(self, event):
         """文件创建事件处理"""
@@ -106,18 +110,18 @@ class PromptFileHandler(FileSystemEventHandler):
             return
         
         try:
-            print(f"➕ 检测到新提示词文件: {prompt_name}")
+            logger.info(f"检测到新提示词文件: {prompt_name}")
             
             # 加载新提示词
             prompt_manager.load_prompt(prompt_name)
-            print(f"✅ 自动加载完成: {prompt_name}")
+            logger.info(f"自动加载完成: {prompt_name}")
             
             # 调用回调函数
             if self.callback:
                 self.callback("created", prompt_name)
                 
         except Exception as e:
-            print(f"❌ 自动加载失败 {prompt_name}: {e}")
+            logger.error(f"自动加载失败 {prompt_name}: {e}")
     
     def on_deleted(self, event):
         """文件删除事件处理"""
@@ -129,19 +133,19 @@ class PromptFileHandler(FileSystemEventHandler):
             return
         
         try:
-            print(f"🗑️ 检测到提示词文件删除: {prompt_name}")
+            logger.info(f"检测到提示词文件删除: {prompt_name}")
             
             # 从缓存中移除
             prompt_manager._prompt_cache.pop(prompt_name, None)
             prompt_manager._template_cache.pop(prompt_name, None)
-            print(f"✅ 缓存清理完成: {prompt_name}")
+            logger.info(f"缓存清理完成: {prompt_name}")
             
             # 调用回调函数
             if self.callback:
                 self.callback("deleted", prompt_name)
                 
         except Exception as e:
-            print(f"❌ 缓存清理失败 {prompt_name}: {e}")
+            logger.error(f"缓存清理失败 {prompt_name}: {e}")
 
 
 class HotReloadManager:
@@ -183,10 +187,10 @@ class HotReloadManager:
                 recursive=False
             )
             
-            print(f"🔍 热重载监控已设置，监控目录: {self.watch_directory}")
+            logger.info(f"热重载监控已设置，监控目录: {self.watch_directory}")
             
         except Exception as e:
-            print(f"❌ 设置文件监控器失败: {e}")
+            logger.error(f"设置文件监控器失败: {e}")
             self.enable_hot_reload = False
     
     def _on_file_change(self, event_type: str, prompt_name: str):
@@ -196,16 +200,16 @@ class HotReloadManager:
             try:
                 callback(event_type, prompt_name)
             except Exception as e:
-                print(f"❌ 回调函数执行失败: {e}")
+                logger.error(f"回调函数执行失败: {e}")
     
     def start(self):
         """启动热重载监控"""
         if not self.enable_hot_reload:
-            print("⚠️ 热重载功能未启用")
+            logger.warning("热重载功能未启用")
             return False
         
         if self.is_running:
-            print("⚠️ 热重载监控已在运行中")
+            logger.warning("热重载监控已在运行中")
             return True
         
         # 如果observer已经停止，需要重新创建
@@ -213,27 +217,27 @@ class HotReloadManager:
             self._setup_file_watcher()
         
         if not self.observer:
-            print("❌ 文件监控器初始化失败")
+            logger.error("文件监控器初始化失败")
             return False
         
         try:
             self.observer.start()
             self.is_running = True
-            print(f"🔥 热重载监控已启动，正在监控: {self.watch_directory}")
+            logger.info(f"热重载监控已启动，正在监控: {self.watch_directory}")
             return True
             
         except Exception as e:
-            print(f"❌ 启动热重载监控失败: {e}")
+            logger.error(f"启动热重载监控失败: {e}")
             # 尝试重新创建observer
             self._setup_file_watcher()
             if self.observer:
                 try:
                     self.observer.start()
                     self.is_running = True
-                    print(f"🔥 热重载监控已重新启动，正在监控: {self.watch_directory}")
+                    logger.info(f"热重载监控已重新启动，正在监控: {self.watch_directory}")
                     return True
                 except Exception as e2:
-                    print(f"❌ 重新启动也失败: {e2}")
+                    logger.error(f"重新启动也失败: {e2}")
             return False
     
     def stop(self):
@@ -245,10 +249,10 @@ class HotReloadManager:
             self.observer.stop()
             self.observer.join(timeout=5)  # 等待最多5秒
             self.is_running = False
-            print("🛑 热重载监控已停止")
+            logger.info("热重载监控已停止")
             
         except Exception as e:
-            print(f"❌ 停止热重载监控失败: {e}")
+            logger.error(f"停止热重载监控失败: {e}")
     
     def add_callback(self, callback: Callable[[str, str], None]):
         """
@@ -258,7 +262,7 @@ class HotReloadManager:
             callback: 回调函数，参数为(event_type, prompt_name)
         """
         self.callbacks.add(callback)
-        print(f"📝 已添加热重载回调函数")
+        logger.info("已添加热重载回调函数")
     
     def remove_callback(self, callback: Callable[[str, str], None]):
         """
@@ -268,7 +272,7 @@ class HotReloadManager:
             callback: 要移除的回调函数
         """
         self.callbacks.discard(callback)
-        print(f"🗑️ 已移除热重载回调函数")
+        logger.info("已移除热重载回调函数")
     
     def get_status(self) -> Dict[str, any]:
         """
@@ -301,8 +305,8 @@ try:
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
-    print("⚠️ 未安装watchdog库，热重载功能不可用")
-    print("   安装命令: uv add watchdog")
+    logger.warning("未安装watchdog库，热重载功能不可用")
+    logger.info("安装命令: uv add watchdog")
 
 
 # 创建全局热重载管理器实例
@@ -314,8 +318,8 @@ hot_reload_manager = HotReloadManager(
 def enable_hot_reload():
     """启用热重载功能"""
     if not WATCHDOG_AVAILABLE:
-        print("❌ watchdog库未安装，无法启用热重载功能")
-        print("   安装命令: uv add watchdog")
+        logger.error("watchdog库未安装，无法启用热重载功能")
+        logger.info("安装命令: uv add watchdog")
         return False
     
     if hot_reload_manager:

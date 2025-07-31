@@ -13,6 +13,10 @@ load_dotenv()
 from . import config
 from .prompt_manager import prompt_manager
 from .memory_manager import memory_manager
+from .logger_config import get_logger
+
+# 配置日志
+logger = get_logger(__name__)
 
 # 导入LangChain核心组件
 from langchain_openai import ChatOpenAI
@@ -41,20 +45,21 @@ class ChatbotPipeline:
     企业级对话机器人核心管道 (V1.1 - 支持热重载回调)
     """
     def __init__(self):
-        print("正在初始化企业级对话机器人...")
+        logger.info("正在初始化企业级对话机器人...")
         self.executor = ThreadPoolExecutor(max_workers=os.cpu_count() or 4)
         self._setup_llm()
-        print("企业级对话机器人初始化完成。")
+        logger.info("企业级对话机器人初始化完成。")
 
     def _setup_llm(self):
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        base_url = os.getenv("OPENROUTER_BASE_URL")
-        model_name = os.getenv("OPENROUTER_MODEL_NAME")
+        api_key = os.getenv("API_KEY")
+        base_url = os.getenv("BASE_URL")
+        model_name = os.getenv("MODEL_NAME")
 
         if not all([api_key, base_url, model_name]):
+            logger.error("API密钥或模型配置未找到。请检查.env文件。")
             raise ValueError("API密钥或模型配置未找到。请检查.env文件。")
         
-        print(f"  - 配置大语言模型: {model_name}")
+        logger.info(f"配置大语言模型: {model_name}")
         self.llm = ChatOpenAI(
             model=model_name,
             openai_api_key=api_key,
