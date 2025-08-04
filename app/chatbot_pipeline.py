@@ -72,12 +72,19 @@ class ChatbotPipeline:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.executor, func, *args)
 
-    async def ask_stream(self, question: str, session_id: str = "default") -> AsyncGenerator[StreamEvent, None]:
+    async def ask_stream(self, question: str, db, user_id: int, session_id: Optional[int] = None) -> AsyncGenerator[StreamEvent, None]:
         """
-        核心的流式对话方法
+        核心的流式对话方法 - 支持用户数据隔离和会话管理
         """
         try:
             yield StreamEvent(type=StreamEventType.PROCESSING, data={"message": "思考中..."}, timestamp=time.time())
+
+            # 如果没有提供session_id，创建新会话
+            if session_id is None:
+                session_id = await memory_manager.create_new_session(db, user_id, question)
+                if session_id is None:
+                    raise Exception("创建新会话失败")
+                yield StreamEvent(type=StreamEventType.PROCESSING, data={"message": "创建新对话会话", "session_id": session_id}, timestamp=time.time())
 
             # 每次调用都重新获取最新的模板，确保热重载生效
             system_prompt_template = prompt_manager.get_template(config.SYSTEM_PROMPT_NAME)
@@ -85,7 +92,8 @@ class ChatbotPipeline:
 
             chat_history = []
             if config.ENABLE_SHORT_TERM_MEMORY:
-                for turn in memory_manager.get_recent_conversations():
+                # 获取当前会话的对话历史
+                for turn in await memory_manager.get_session_context(db, session_id, user_id):
                     chat_history.append(HumanMessage(content=turn.question))
                     chat_history.append(AIMessage(content=turn.answer))
 
@@ -111,10 +119,12 @@ class ChatbotPipeline:
                     # await asyncio.sleep(0.02)
 
             if config.ENABLE_SHORT_TERM_MEMORY:
-                memory_manager.add_conversation(question, complete_answer.strip())
+                # 保存用户问题和AI回答到当前会话
+                await memory_manager.add_message_to_session(db, session_id, "user", question)
+                await memory_manager.add_message_to_session(db, session_id, "assistant", complete_answer.strip())
 
             yield StreamEvent(type=StreamEventType.GENERATION_END, data={"message": "生成完成"}, timestamp=time.time())
-            yield StreamEvent(type=StreamEventType.COMPLETE, data={"message": "对话完成"}, timestamp=time.time())
+            yield StreamEvent(type=StreamEventType.COMPLETE, data={"message": "对话完成", "session_id": session_id}, timestamp=time.time())
 
         except Exception as e:
             yield StreamEvent(type=StreamEventType.ERROR, data={"error": str(e)}, timestamp=time.time())

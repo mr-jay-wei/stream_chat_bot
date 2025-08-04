@@ -3,7 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
@@ -12,6 +12,10 @@ from contextlib import asynccontextmanager
 from app.chatbot_pipeline import ChatbotPipeline, StreamEventType, StreamEvent
 from app import config
 from app.hot_reload_manager import hot_reload_manager
+from app.database import init_database, get_db
+from app.api_routes import router as api_router
+from app.auth import verify_token
+from app.user_service import UserService
 
 # 导入新的日志配置
 from app.logger_config import get_logger
@@ -29,25 +33,28 @@ async def lifespan(app: FastAPI):
     """
     # --- 应用启动时执行 ---
     global pipeline
-    logger.info("应用启动，正在初始化对话机器人...")
+    logger.info("应用启动，正在初始化...")
     try:
+        # 初始化数据库
+        await init_database()
+        logger.info("数据库初始化完成。")
+        
+        # 初始化对话机器人
         pipeline = ChatbotPipeline()
         logger.info("对话机器人初始化完成。")
         
         # 启动热重载
-        # from app.hot_reload_manager import hot_reload_manager
         if hot_reload_manager and config.ENABLE_HOT_RELOAD:
             hot_reload_manager.start()
             
     except Exception as e:
-        logger.error(f"Pipeline初始化失败: {e}", exc_info=True)
+        logger.error(f"应用初始化失败: {e}", exc_info=True)
         # 即使失败，也需要yield一次，让FastAPI知道启动流程已（不成功地）走完
     
     yield  # <--- 这是关键的分割点
 
     # --- 应用关闭时执行 ---
     logger.info("应用关闭...")
-    # from app.hot_reload_manager import hot_reload_manager
     if hot_reload_manager:
         hot_reload_manager.stop()
         
@@ -61,6 +68,9 @@ app = FastAPI(
     description="一个支持实时流式响应、具备记忆和可热重载角色的高级对话平台",
     lifespan=lifespan # <--- 在这里注册
 )
+
+# 注册API路由
+app.include_router(api_router, prefix="/api", tags=["auth"])
 
 # --- 静态文件服务 ---
 # 挂载static目录，让FastAPI能直接提供HTML, CSS, JS文件
@@ -78,33 +88,88 @@ async def get_homepage():
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket连接已建立")
+    
+    user = None
+    db = None
+    
     try:
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
             
+            # 处理认证消息
+            if message.get("type") == "auth":
+                token = message.get("token", "")
+                if not token:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "data": {"error": "未提供认证令牌"}
+                    }))
+                    continue
+                
+                # 验证token
+                email = verify_token(token)
+                if not email:
+                    await websocket.send_text(json.dumps({
+                        "type": "error", 
+                        "data": {"error": "无效的认证令牌"}
+                    }))
+                    continue
+                
+                # 获取用户信息
+                async for db_session in get_db():
+                    db = db_session
+                    user = await UserService.get_user_by_email(db, email)
+                    break
+                
+                if not user:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "data": {"error": "用户不存在"}
+                    }))
+                    continue
+                
+                # 认证成功
+                await websocket.send_text(json.dumps({
+                    "type": "auth_success",
+                    "data": {"message": f"欢迎回来，{user.email}！"}
+                }))
+                logger.info(f"用户 {user.email} WebSocket认证成功")
+                continue
+            
+            # 处理对话消息
             if message.get("type") == "question":
+                # 检查用户是否已认证
+                if not user or not db:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "data": {"error": "请先进行身份认证"}
+                    }))
+                    continue
+                
                 question = message.get("content", "")
+                session_id = message.get("session_id")  # 可选的会话ID
+                
                 if not pipeline:
-                    # 如果pipeline未初始化成功，发送错误
                     await websocket.send_text(json.dumps({
                         "type": "error",
                         "data": {"error": "机器人核心引擎未准备就绪，请检查服务器日志。"}
                     }))
                     continue
 
-                logger.info(f"收到问题: {question}")
+                logger.info(f"用户 {user.email} 在会话 {session_id} 中提问: {question}")
                 
-                async for event in pipeline.ask_stream(question):
-                    response = { "type": event.type.value, "data": event.data }
+                # 使用用户ID和会话ID进行对话
+                async for event in pipeline.ask_stream(question, db, user.id, session_id):
+                    response = {"type": event.type.value, "data": event.data}
                     await websocket.send_text(json.dumps(response))
                     
     except WebSocketDisconnect:
-        logger.info("WebSocket连接已断开")
+        logger.info(f"WebSocket连接已断开 - 用户: {user.email if user else '未认证'}")
     except Exception as e:
         logger.error(f"WebSocket处理错误: {e}", exc_info=True)
-        if websocket.client_state == 1: # OPEN
-             await websocket.send_text(json.dumps({
+        if websocket.client_state == 1:  # OPEN
+            await websocket.send_text(json.dumps({
                 "type": "error",
                 "data": {"error": f"服务器内部错误: {str(e)}"}
             }))

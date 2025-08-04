@@ -8,17 +8,106 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>🤖 企业级AI对话机器人</h1>
-        <div id="connectionStatus" class="connection-status disconnected">正在连接...</div>
-        <div id="chatContainer" class="chat-container">
-            <div class="message status-message">欢迎！我是AI-Jay，随时准备为您服务。</div>
-        </div>
-        <div class="input-container">
-            <input type="text" id="questionInput" placeholder="请输入您的问题..." />
-            <button id="sendButton" disabled>发送</button>
+    <!-- 登录/注册界面 -->
+    <div id="authContainer" class="auth-container">
+        <div class="auth-form">
+            <h1>🤖 企业级AI对话机器人</h1>
+            <div class="auth-tabs">
+                <button id="loginTab" class="auth-tab active">登录</button>
+                <button id="registerTab" class="auth-tab">注册</button>
+            </div>
+            
+            <!-- 登录表单 -->
+            <form id="loginForm" class="auth-form-content">
+                <div class="form-group">
+                    <label for="loginEmail">邮箱</label>
+                    <input type="email" id="loginEmail" required placeholder="请输入邮箱">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">密码</label>
+                    <input type="password" id="loginPassword" required placeholder="请输入密码">
+                </div>
+                <button type="submit" class="auth-button">登录</button>
+            </form>
+            
+            <!-- 注册表单 -->
+            <form id="registerForm" class="auth-form-content hidden">
+                <div class="form-group">
+                    <label for="registerEmail">邮箱</label>
+                    <input type="email" id="registerEmail" required placeholder="请输入邮箱">
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">密码</label>
+                    <input type="password" id="registerPassword" required placeholder="请输入密码（至少6位）" minlength="6">
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">确认密码</label>
+                    <input type="password" id="confirmPassword" required placeholder="请再次输入密码" minlength="6">
+                </div>
+                <button type="submit" class="auth-button">注册</button>
+            </form>
+            
+            <div id="authMessage" class="auth-message"></div>
         </div>
     </div>
+
+    <!-- 聊天界面 -->
+    <div id="chatApp" class="chat-app hidden">
+        <!-- 左侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <button id="newChatButton" class="new-chat-button">
+                    <span class="icon">+</span>
+                    新建对话
+                </button>
+            </div>
+            
+            <div class="chat-history">
+                <div class="chat-history-header">
+                    <h3>聊天记录</h3>
+                </div>
+                <div id="chatHistoryList" class="chat-history-list">
+                    <!-- 聊天记录将在这里动态加载 -->
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">👤</div>
+                    <div class="user-details">
+                        <div id="userEmail" class="user-email"></div>
+                        <button id="logoutButton" class="logout-button">登出</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主聊天区域 -->
+        <div class="main-content">
+            <div class="chat-header">
+                <h1>🤖 企业级AI对话机器人</h1>
+                <div id="connectionStatus" class="connection-status disconnected">正在连接...</div>
+            </div>
+            
+            <div id="chatContainer" class="chat-container">
+                <div class="welcome-message">
+                    <div class="welcome-icon">🤖</div>
+                    <h2>欢迎使用AI助手</h2>
+                    <p>我是AI-Jay，随时准备为您服务。您可以问我任何问题！</p>
+                </div>
+            </div>
+            
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <input type="text" id="questionInput" placeholder="请输入您的问题..." />
+                    <button id="sendButton" disabled>
+                        <span class="send-icon">➤</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <script src="/static/main.js"></script>
 </body>
 </html>
