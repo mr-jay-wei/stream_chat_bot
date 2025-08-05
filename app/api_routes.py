@@ -5,14 +5,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from .database import get_db
 from .auth import (
     authenticate_user, create_user, create_access_token, 
     verify_token, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from .user_service import UserService
+# from .user_service import UserService  # 已移动到test文件夹
 from .logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -39,10 +39,10 @@ class UserInfo(BaseModel):
     is_active: bool
 
 # 依赖函数：获取当前用户
-async def get_current_user(
+def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     token: Optional[str] = Cookie(None, alias="access_token"),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """获取当前认证用户"""
     # 优先使用Authorization header中的token
@@ -68,7 +68,7 @@ async def get_current_user(
         )
     
     from .auth import get_user_by_email
-    user = await get_user_by_email(db, email)
+    user = get_user_by_email(db, email)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -78,11 +78,11 @@ async def get_current_user(
     return user
 
 @router.post("/register", response_model=TokenResponse)
-async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
+def register(user_data: UserRegister, db: Session = Depends(get_db)):
     """用户注册"""
     try:
         # 创建用户
-        user = await create_user(db, user_data.email, user_data.password)
+        user = create_user(db, user_data.email, user_data.password)
         
         # 创建访问令牌
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -108,11 +108,11 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
         )
 
 @router.post("/login", response_model=TokenResponse)
-async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
+def login(user_data: UserLogin, db: Session = Depends(get_db)):
     """用户登录"""
     try:
         # 验证用户
-        user = await authenticate_user(db, user_data.email, user_data.password)
+        user = authenticate_user(db, user_data.email, user_data.password)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -144,7 +144,7 @@ async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
         )
 
 @router.get("/me", response_model=UserInfo)
-async def get_current_user_info(current_user = Depends(get_current_user)):
+def get_current_user_info(current_user = Depends(get_current_user)):
     """获取当前用户信息"""
     return UserInfo(
         id=current_user.id,
@@ -153,99 +153,68 @@ async def get_current_user_info(current_user = Depends(get_current_user)):
     )
 
 @router.post("/logout")
-async def logout():
+def logout():
     """用户登出（客户端需要删除token）"""
     return {"message": "登出成功"}
 
+# 新的会话管理API
 @router.get("/chat-sessions")
-async def get_user_chat_sessions(
+def get_user_chat_sessions(
     current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
-    """获取用户的对话会话列表"""
+    """获取用户的会话列表"""
     try:
-        sessions = await UserService.get_user_chat_sessions(db, current_user.id, limit=50)
-        
-        chat_list = []
-        for session in sessions:
-            # 获取最后一条消息作为预览
-            preview = ""
-            if session.messages:
-                last_message = session.messages[-1]
-                preview = last_message.content[:100] + "..." if len(last_message.content) > 100 else last_message.content
-            
-            chat_item = {
-                "id": session.id,
-                "title": session.title,
-                "preview": preview,
-                "created_at": session.created_at.isoformat(),
-                "updated_at": session.updated_at.isoformat(),
-                "message_count": len(session.messages)
-            }
-            chat_list.append(chat_item)
-        
-        return {"sessions": chat_list}
-        
+        from .session_manager import session_manager
+        sessions = session_manager.get_user_sessions(db, current_user.id)
+        return {"sessions": sessions}
     except Exception as e:
-        logger.error(f"获取用户对话会话失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="获取对话会话失败"
-        )
+        logger.error(f"获取用户会话失败: {e}")
+        return {"sessions": []}
 
 @router.get("/chat-sessions/{session_id}/messages")
-async def get_session_messages(
+def get_session_messages(
     session_id: int,
     current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """获取指定会话的所有消息"""
     try:
-        messages = await UserService.get_session_messages(db, session_id, current_user.id)
-        
-        message_list = []
-        for message in messages:
-            message_item = {
-                "id": message.id,
-                "role": message.role,
-                "content": message.content,
-                "created_at": message.created_at.isoformat()
-            }
-            message_list.append(message_item)
-        
-        return {"messages": message_list}
-        
+        from .session_manager import session_manager
+        messages = session_manager.get_session_messages(db, session_id, current_user.id)
+        return {"messages": messages}
     except Exception as e:
         logger.error(f"获取会话消息失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="获取会话消息失败"
-        )
+        return {"messages": []}
 
 # 保留旧的API以兼容现有代码
 @router.get("/conversations")
-async def get_user_conversations(
+def get_user_conversations(
     current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """获取用户的聊天记录列表（兼容旧版本）"""
     try:
-        conversations = await UserService.get_user_conversations(db, current_user.id, limit=50)
+        from .session_manager import session_manager
         
-        # 按对话分组（这里简化处理，每个问答对作为一个对话）
-        chat_list = []
-        for conv in conversations:
-            chat_item = {
-                "id": conv.id,
-                "title": conv.question[:50] + "..." if len(conv.question) > 50 else conv.question,
-                "preview": conv.answer[:100] + "..." if len(conv.answer) > 100 else conv.answer,
-                "created_at": conv.created_at.isoformat(),
-                "question": conv.question,
-                "answer": conv.answer
-            }
-            chat_list.append(chat_item)
+        # 优先返回新的会话数据
+        sessions = session_manager.get_user_sessions(db, current_user.id)
+        if sessions:
+            # 转换为旧格式以兼容前端
+            conversations = []
+            for session in sessions:
+                conversations.append({
+                    "id": session["id"],
+                    "title": session["title"],
+                    "preview": session["preview"],
+                    "created_at": session["created_at"],
+                    "session_type": "chat_session"  # 标记这是新的会话类型
+                })
+            return {"conversations": conversations}
         
-        return {"conversations": chat_list}
+        # 如果没有新会话，返回旧的对话记录
+        legacy_conversations = session_manager.get_legacy_conversations(db, current_user.id)
+        return {"conversations": legacy_conversations}
         
     except Exception as e:
         logger.error(f"获取用户对话记录失败: {e}")
@@ -255,31 +224,41 @@ async def get_user_conversations(
         )
 
 @router.delete("/chat-sessions/{session_id}")
-async def delete_chat_session(
+def delete_chat_session(
     session_id: int,
     current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """删除指定的对话会话"""
     try:
-        # 验证会话属于当前用户
-        session = await UserService.get_chat_session_by_id(db, session_id, current_user.id)
-        if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="对话会话不存在"
-            )
+        # 使用新的会话管理系统进行删除
+        from .session_manager import session_manager
         
-        # 删除会话（级联删除所有消息）
-        success = await UserService.delete_chat_session(db, session_id, current_user.id)
-        if success:
-            logger.info(f"用户 {current_user.email} 删除对话会话 {session_id}")
-            return {"message": "对话会话删除成功"}
+        # 尝试删除新的会话
+        success = session_manager.delete_session(db, current_user.id, session_id)
+        
+        if not success:
+            # 如果新会话删除失败，尝试删除旧的对话记录（兼容性）
+            from .models import Conversation
+            conversation = db.query(Conversation).filter(
+                Conversation.id == session_id,
+                Conversation.user_id == current_user.id
+            ).first()
+            
+            if conversation:
+                db.delete(conversation)
+                db.commit()
+                success = True
+                logger.info(f"用户 {current_user.email} 删除旧对话记录 {session_id}")
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="对话记录不存在或不属于当前用户"
+                )
         else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="删除对话会话失败"
-            )
+            logger.info(f"用户 {current_user.email} 删除会话 {session_id}")
+        
+        return {"message": "对话会话删除成功"}
         
     except HTTPException:
         raise
@@ -291,15 +270,16 @@ async def delete_chat_session(
         )
 
 @router.delete("/messages/{message_id}")
-async def delete_message(
+def delete_message(
     message_id: int,
     current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """删除指定的消息"""
     try:
         # 删除消息（确保属于当前用户）
-        success = await UserService.delete_message(db, message_id, current_user.id)
+        # success = UserService.delete_message(db, message_id, current_user.id)
+        success = False  # 暂时返回False，因为Message功能被注释了
         if success:
             logger.info(f"用户 {current_user.email} 删除消息 {message_id}")
             return {"message": "消息删除成功"}

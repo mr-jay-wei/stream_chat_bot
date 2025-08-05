@@ -4,8 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from .models import User
@@ -41,29 +40,28 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
     """根据邮箱获取用户"""
     try:
-        result = await db.execute(select(User).where(User.email == email))
-        return result.scalar_one_or_none()
+        return db.query(User).filter(User.email == email).first()
     except Exception as e:
         logger.error(f"获取用户失败: {e}")
         return None
 
-async def authenticate_user(db: AsyncSession, email: str, password: str) -> Optional[User]:
+def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     """验证用户"""
-    user = await get_user_by_email(db, email)
+    user = get_user_by_email(db, email)
     if not user:
         return None
     if not verify_password(password, user.hashed_password):
         return None
     return user
 
-async def create_user(db: AsyncSession, email: str, password: str) -> User:
+def create_user(db: Session, email: str, password: str) -> User:
     """创建新用户"""
     try:
         # 检查用户是否已存在
-        existing_user = await get_user_by_email(db, email)
+        existing_user = get_user_by_email(db, email)
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -77,8 +75,8 @@ async def create_user(db: AsyncSession, email: str, password: str) -> User:
             hashed_password=hashed_password
         )
         db.add(db_user)
-        await db.commit()
-        await db.refresh(db_user)
+        db.commit()
+        db.refresh(db_user)
         
         logger.info(f"新用户注册成功: {email}")
         return db_user
@@ -87,7 +85,7 @@ async def create_user(db: AsyncSession, email: str, password: str) -> User:
         raise
     except Exception as e:
         logger.error(f"创建用户失败: {e}")
-        await db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="用户创建失败"

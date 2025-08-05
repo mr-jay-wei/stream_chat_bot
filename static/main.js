@@ -238,7 +238,7 @@
     // 加载聊天会话
     async function loadChatSessions() {
         try {
-            const response = await fetch('/api/chat-sessions', {
+            const response = await fetch('/api/conversations', {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                 },
@@ -246,7 +246,7 @@
             
             if (response.ok) {
                 const data = await response.json();
-                chatSessions = data.sessions;
+                chatSessions = data.conversations || [];
                 renderChatSessionsList();
             } else {
                 console.error('加载聊天会话失败');
@@ -324,25 +324,38 @@
         clearChatHistory();
         
         try {
-            const response = await fetch(`/api/chat-sessions/${session.id}/messages`, {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                },
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                
-                // 显示历史消息
-                data.messages.forEach(message => {
-                    addMessage(message.content, message.role === 'user' ? 'user' : 'bot', message.id);
+            // 检查是否是新的会话类型
+            if (session.session_type === 'chat_session') {
+                // 使用新的API获取会话消息
+                const response = await fetch(`/api/chat-sessions/${session.id}/messages`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                    },
                 });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // 显示历史消息
+                    data.messages.forEach(message => {
+                        addMessage(message.content, message.role === 'user' ? 'user' : 'bot', message.id);
+                    });
+                    
+                    console.log(`已加载会话: ${session.title} (${data.messages.length} 条消息)`);
+                } else {
+                    console.error('加载会话消息失败');
+                    addMessage('加载历史消息失败', 'status');
+                }
             } else {
-                console.error('加载会话消息失败');
-                addMessage('加载历史消息失败', 'status');
+                // 兼容旧的对话记录格式
+                if (session.question && session.answer) {
+                    addMessage(session.question, 'user');
+                    addMessage(session.answer, 'bot');
+                    console.log(`已加载旧对话: ${session.title}`);
+                }
             }
         } catch (error) {
-            console.error('加载会话消息错误:', error);
+            console.error('加载对话时出错:', error);
             addMessage('加载历史消息失败', 'status');
         }
     }

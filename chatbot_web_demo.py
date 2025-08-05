@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     try:
         # 初始化数据库
         from app.database import init_database
-        await init_database()
+        init_database()
         logger.info("数据库初始化完成。")
         
         # 初始化对话机器人
@@ -142,13 +142,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                         
                     # 获取数据库会话和用户信息
-                    async for db_session in get_db():
-                        db = db_session
-                        # 使用异步查询
-                        from sqlalchemy import select
-                        result = await db.execute(select(User).where(User.email == email))
-                        user = result.scalar_one_or_none()
-                        break
+                    from app.database import SessionLocal
+                    db = SessionLocal()
+                    try:
+                        # 使用同步查询
+                        user = db.query(User).filter(User.email == email).first()
+                    except Exception as e:
+                        logger.error(f"数据库查询错误: {e}")
+                        db.close()
+                        continue
                     
                 except JWTError:
                     await websocket.send_text(json.dumps({
@@ -215,6 +217,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 "type": "error",
                 "data": {"error": f"服务器内部错误: {str(e)}"}
             }))
+    finally:
+        # 确保数据库会话被正确关闭
+        if db:
+            try:
+                db.close()
+            except Exception as e:
+                logger.error(f"关闭数据库会话时出错: {e}")
 
 if __name__ == "__main__":
     import uvicorn
