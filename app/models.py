@@ -54,7 +54,7 @@ class Conversation(Base):
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # 注意：旧表没有updated_at字段，所以不包含在模型中
     
     # 关系
     user = relationship("User", back_populates="conversations")
