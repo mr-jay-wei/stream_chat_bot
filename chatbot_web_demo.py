@@ -2,20 +2,23 @@
 
 import asyncio
 import json
+import time
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+from sqlalchemy.orm import Session
 
 # 导入我们的对话机器人核心
 from app.chatbot_pipeline import ChatbotPipeline, StreamEventType, StreamEvent
 from app import config
 from app.hot_reload_manager import hot_reload_manager
-from app.database import init_database, get_db
+
+# 导入数据库和认证相关
+from app.database import engine, get_db
+from app.models import Base, User, Conversation, ChatSession
 from app.api_routes import router as api_router
-from app.auth import verify_token
-from app.user_service import UserService
 
 # 导入新的日志配置
 from app.logger_config import get_logger
@@ -36,6 +39,7 @@ async def lifespan(app: FastAPI):
     logger.info("应用启动，正在初始化...")
     try:
         # 初始化数据库
+        from app.database import init_database
         await init_database()
         logger.info("数据库初始化完成。")
         
@@ -83,6 +87,18 @@ async def get_homepage():
     """
     return FileResponse('static/index.html')
 
+@app.get("/health")
+async def health_check():
+    """
+    健康检查端点，用于Docker和负载均衡器检查服务状态。
+    """
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "service": "chatbot-api",
+        "version": "1.0.0"
+    }
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -108,19 +124,45 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
                 
                 # 验证token
-                email = verify_token(token)
-                if not email:
+                try:
+                    from jose import jwt, JWTError
+                    import os
+                    
+                    SECRET_KEY = os.getenv("SECRET_KEY")
+                    ALGORITHM = os.getenv("ALGORITHM", "HS256")
+                    
+                    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                    email = payload.get("sub")
+                    
+                    if not email:
+                        await websocket.send_text(json.dumps({
+                            "type": "auth_error",
+                            "data": {"error": "无效的认证令牌"}
+                        }))
+                        continue
+                        
+                    # 获取数据库会话和用户信息
+                    async for db_session in get_db():
+                        db = db_session
+                        # 使用异步查询
+                        from sqlalchemy import select
+                        result = await db.execute(select(User).where(User.email == email))
+                        user = result.scalar_one_or_none()
+                        break
+                    
+                except JWTError:
                     await websocket.send_text(json.dumps({
-                        "type": "error", 
+                        "type": "auth_error",
                         "data": {"error": "无效的认证令牌"}
                     }))
                     continue
-                
-                # 获取用户信息
-                async for db_session in get_db():
-                    db = db_session
-                    user = await UserService.get_user_by_email(db, email)
-                    break
+                except Exception as e:
+                    logger.error(f"WebSocket认证错误: {e}")
+                    await websocket.send_text(json.dumps({
+                        "type": "auth_error",
+                        "data": {"error": "认证失败"}
+                    }))
+                    continue
                 
                 if not user:
                     await websocket.send_text(json.dumps({
