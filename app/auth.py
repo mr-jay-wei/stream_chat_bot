@@ -6,7 +6,8 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-
+from dotenv import load_dotenv
+load_dotenv() # 加载环境变量
 from .models import User
 from .logger_config import get_logger
 
