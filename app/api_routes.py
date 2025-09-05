@@ -7,6 +7,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from .models import User
+from fastapi import Request
+from .limiter import limiter # 导入我们的limiter实例
 
 from .database import get_db
 from .auth import (
@@ -79,7 +81,8 @@ def get_current_user(
     return user
 
 @router.post("/register", response_model=TokenResponse)
-def register(user_data: UserRegister, db: Session = Depends(get_db)):
+@limiter.limit("5/minute") # 每分钟最多5次
+def register(request: Request, user_data: UserRegister, db: Session = Depends(get_db)):
     """用户注册"""
     try:
         # 创建用户
@@ -109,7 +112,8 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         )
 
 @router.post("/login", response_model=TokenResponse)
-def login(user_data: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute") # 登录允许更频繁一些，每分钟10次
+def login(request: Request, user_data: UserLogin, db: Session = Depends(get_db)):
     """用户登录"""
     try:
         # 验证用户

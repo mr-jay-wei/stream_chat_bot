@@ -23,7 +23,7 @@ DB_NAME = os.getenv("DB_NAME", "mydb")
 DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # --- 用于本地开发的 SQLite 配置 (备用) ---
-# 如果需要切换回SQLite，只需取消注释下面这行，并注释掉上面的PostgreSQL配置
+# 如果需要切换回SQLite，只需取消注释下面这行，并注释掉上面的PostgreSQL配置，init_database也要改回上面的init_database函数
 # DATABASE_URL = "sqlite:///stream_chat_bot.db"
 
 # 创建引擎

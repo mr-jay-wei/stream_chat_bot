@@ -10,6 +10,14 @@ from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from starlette.requests import Request
+from starlette.responses import Response
+
+# 导入我们的 limiter 实例
+from app.limiter import limiter
+
 # 导入我们的对话机器人核心
 from app.chatbot_pipeline import ChatbotPipeline, StreamEventType, StreamEvent
 from app import config
@@ -72,6 +80,12 @@ app = FastAPI(
     description="一个支持实时流式响应、具备记忆和可热重载角色的高级对话平台",
     lifespan=lifespan # <--- 在这里注册
 )
+
+# --- 集成速率限制 ---
+# 将limiter实例附加到app.state
+app.state.limiter = limiter
+# 添加速率限制超出时的异常处理器
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 注册API路由
 app.include_router(api_router, prefix="/api", tags=["auth"])
