@@ -17,6 +17,7 @@ stream_chat_bot/
 │   ├── config.py
 │   ├── database.py
 │   ├── hot_reload_manager.py
+│   ├── limiter.py
 │   ├── logger_config.py
 │   ├── models.py
 │   ├── prompt_manager.py
@@ -45,12 +46,30 @@ stream_chat_bot/
 ## `.env_example`
 
 ```
-CLOUD_INFINI_API_KEY = ""
-CLOUD_BASE_URL = ""
-CLOUD_MODEL_NAME = ""
-DeepSeek_api_key = ""
-DeepSeek_base_url = ""
-DeepSeek_model_name = ""
+# LLM配置
+API_KEY='xxx'
+BASE_URL="xxx"
+MODEL_NAME="xxx"
+
+# 数据库配置
+# --- PostgreSQL Database ---
+DB_HOST = "xxx"
+DB_PORT = "xxx"
+DB_USER = "xxx"
+DB_PASSWORD = "xxx"
+DB_NAME = "xxx"
+
+# --- Redis ---
+REDIS_HOST = "xxx"
+REDIS_PORT = 6379
+REDIS_DB = 0
+
+# JWT密钥配置
+SECRET_KEY="xxx"
+ALGORITHM="HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+
 ```
 
 ## `.gitignore`
@@ -87,12 +106,17 @@ wheels/
 # app/api_routes.py
 
 from datetime import timedelta
-from typing import Optional
+from typing import Optional,  Any
 from fastapi import APIRouter, Depends, HTTPException, status, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from .models import User
+from fastapi import Request
+
+from .limiter import limiter # 导入我们的limiter实例
+from fastapi_cache.decorator import cache
+from starlette.responses import Response
 
 from .database import get_db
 from .auth import (
@@ -105,6 +129,28 @@ from .logger_config import get_logger
 logger = get_logger(__name__)
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
+
+# [CACHE] 自定义缓存键生成器，确保每个用户的缓存是独立的
+def key_builder(
+    func: Any,
+    namespace: str = "",
+    *,
+    request: Request,
+    response: Response | None = None,
+    **kwargs: Any,
+) -> str:
+    # 获取当前用户信息
+    # 注意：这里我们不能直接用Depends，需要从request中获取
+    current_user = getattr(request.state, "current_user", None)
+    
+    # 如果能获取到用户ID，就加入到缓存键中
+    if current_user and hasattr(current_user, 'id'):
+        cache_key = f"{namespace}:{func.__module__}:{func.__name__}:user_{current_user.id}"
+    else:
+        # 否则，使用IP地址作为后备
+        cache_key = f"{namespace}:{func.__module__}:{func.__name__}:ip_{request.client.host}"
+        
+    return cache_key
 
 # 请求模型
 class UserRegister(BaseModel):
@@ -165,7 +211,8 @@ def get_current_user(
     return user
 
 @router.post("/register", response_model=TokenResponse)
-def register(user_data: UserRegister, db: Session = Depends(get_db)):
+@limiter.limit("5/minute") # 每分钟最多5次
+def register(request: Request, user_data: UserRegister, db: Session = Depends(get_db)):
     """用户注册"""
     try:
         # 创建用户
@@ -195,7 +242,8 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         )
 
 @router.post("/login", response_model=TokenResponse)
-def login(user_data: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute") # 登录允许更频繁一些，每分钟10次
+def login(request: Request, user_data: UserLogin, db: Session = Depends(get_db)):
     """用户登录"""
     try:
         # 验证用户
@@ -246,10 +294,15 @@ def logout():
 
 # 新的会话管理API
 @router.get("/chat-sessions")
+@cache(expire=60, key_builder=key_builder) # 缓存60秒，并使用自定义key生成器
 def get_user_chat_sessions(
+    request: Request, # 确保request被传入
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # [CACHE] 将用户信息附加到request.state，供key_builder使用
+    request.state.current_user = current_user
+
     """获取用户的会话列表"""
     try:
         from .session_manager import session_manager
@@ -276,10 +329,15 @@ def get_session_messages(
 
 # 保留旧的API以兼容现有代码
 @router.get("/conversations")
+@cache(expire=60, key_builder=key_builder) # 同样为旧API也加上缓存
 def get_user_conversations(
+    request: Request, # 确保request被传入
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # [CACHE] 将用户信息附加到request.state
+    request.state.current_user = current_user
+    
     """获取用户的聊天记录列表（兼容旧版本）"""
     try:
         from .session_manager import session_manager
@@ -406,7 +464,8 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-
+from dotenv import load_dotenv
+load_dotenv() # 加载环境变量
 from .models import User
 from .logger_config import get_logger
 
@@ -739,39 +798,54 @@ ENABLE_ERROR_LOG: bool = True  # 是否启用单独的错误日志文件
 # app/database.py
 
 import os
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey
-from sqlalchemy.orm import DeclarativeBase, sessionmaker, relationship
-from datetime import datetime
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from typing import Generator
-import sqlite3
-
+from dotenv import load_dotenv
+load_dotenv()
 from .logger_config import get_logger
-
 logger = get_logger(__name__)
 
 class Base(DeclarativeBase):
     pass
-'''
-# 数据库配置
-DATABASE_CONFIG = {
-    "user": "postgres",
-    "password": "052756", 
-    "host": "127.0.0.1",
-    "port": "5432",
-    "database": "mydb"
-}
+# --- 从环境变量读取数据库配置 ---
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "mydb")
 
-# 构建数据库URL（使用同步驱动）
-DATABASE_URL = f"postgresql://{DATABASE_CONFIG['user']}:{DATABASE_CONFIG['password']}@{DATABASE_CONFIG['host']}:{DATABASE_CONFIG['port']}/{DATABASE_CONFIG['database']}"
-'''
-DATABASE_URL = "sqlite:///stream_chat_bot.db"
-# 创建同步引擎
+# --- 生产环境 PostgreSQL 配置 ---
+# 使用 psycopg2 驱动
+DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},  
-    echo=False  # 设为True可以看到SQL语句
-)
+# --- 用于本地开发的 SQLite 配置 (备用) ---
+# 如果需要切换回SQLite，只需取消注释下面这行，并注释掉上面的PostgreSQL配置，init_database也要改回上面的init_database函数
+# DATABASE_URL = "sqlite:///stream_chat_bot.db"
+
+# 创建引擎
+try:
+    if DATABASE_URL.startswith("sqlite"):
+        # SQLite 的特定配置
+        engine = create_engine(
+            DATABASE_URL,
+            connect_args={"check_same_thread": False},
+            echo=False
+        )
+        logger.info("正在使用 SQLite 数据库 (用于本地开发)")
+    else:
+        # PostgreSQL 的配置
+        engine = create_engine(
+            DATABASE_URL,
+            echo=False,
+            pool_size=10,
+            max_overflow=20
+        )
+        logger.info(f"正在连接 PostgreSQL 数据库: {DB_HOST}:{DB_PORT}/{DB_NAME}")
+
+except Exception as e:
+    logger.error(f"创建数据库引擎失败: {e}")
+    raise
 
 # 创建同步会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -788,38 +862,48 @@ def get_db() -> Generator:
     finally:
         db.close()
 
+# def init_database():
+#     """初始化数据库表"""
+#     try:
+#         # 检查数据库文件是否存在
+#         db_file = 'stream_chat_bot.db'
+#         is_new_db = not os.path.exists(db_file)
+        
+#         Base.metadata.create_all(bind=engine)
+#         if is_new_db:
+#             logger.info(f"新的SQLite数据库文件 '{db_file}' 已创建并初始化。")
+#         else:
+#             logger.info("数据库表初始化检查完成。")
+
+#         # 检查新表是否创建成功
+#         from sqlalchemy import text
+#         db = SessionLocal()
+#         try:
+#             # 检查chat_sessions表
+#             result = db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_sessions'"))
+#             if result.fetchone():
+#                 logger.info("✅ chat_sessions表已存在")
+            
+#             # 检查messages表
+#             result = db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'"))
+#             if result.fetchone():
+#                 logger.info("✅ messages表已存在")
+                
+#         except Exception as e:
+#             logger.warning(f"检查新表时出错: {e}")
+#         finally:
+#             db.close()
+            
+#     except Exception as e:
+#         logger.error(f"数据库初始化失败: {e}")
+#         raise
+
 def init_database():
     """初始化数据库表"""
     try:
-        # 检查数据库文件是否存在
-        db_file = 'stream_chat_bot.db'
-        is_new_db = not os.path.exists(db_file)
-        
+        logger.info("正在初始化/检查数据库表...")
         Base.metadata.create_all(bind=engine)
-        if is_new_db:
-            logger.info(f"新的SQLite数据库文件 '{db_file}' 已创建并初始化。")
-        else:
-            logger.info("数据库表初始化检查完成。")
-
-        # 检查新表是否创建成功
-        from sqlalchemy import text
-        db = SessionLocal()
-        try:
-            # 检查chat_sessions表
-            result = db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_sessions'"))
-            if result.fetchone():
-                logger.info("✅ chat_sessions表已存在")
-            
-            # 检查messages表
-            result = db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'"))
-            if result.fetchone():
-                logger.info("✅ messages表已存在")
-                
-        except Exception as e:
-            logger.warning(f"检查新表时出错: {e}")
-        finally:
-            db.close()
-            
+        logger.info("数据库表初始化完成。")
     except Exception as e:
         logger.error(f"数据库初始化失败: {e}")
         raise
@@ -1179,6 +1263,40 @@ def get_hot_reload_status() -> Dict[str, any]:
             "running": False,
             "error": "watchdog库未安装" if not WATCHDOG_AVAILABLE else "热重载管理器未初始化"
         }
+```
+
+## `app/limiter.py`
+
+```python
+# app/limiter.py
+
+import os
+import redis.asyncio as redis
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from dotenv import load_dotenv
+load_dotenv()
+from .logger_config import get_logger
+logger = get_logger(__name__)
+
+# --- Redis 连接 ---
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_DB = int(os.getenv("REDIS_DB", 0))
+
+# 构建 Redis URL
+redis_url = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+logger.info(f"速率限制器正在连接到 Redis: {REDIS_HOST}:{REDIS_PORT}")
+
+# --- 初始化 Limiter ---
+# 使用异步 redis 客户端
+limiter = Limiter(
+    key_func=get_remote_address,  # 使用客户端的IP地址作为唯一标识
+    storage_uri=redis_url,
+    strategy="fixed-window",  # 固定时间窗口算法
+    storage_options={"socket_connect_timeout": 3}
+)
 ```
 
 ## `app/logger_config.py`
@@ -1950,6 +2068,23 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
+from dotenv import load_dotenv
+load_dotenv()
+import os
+
+#redis begin
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from starlette.requests import Request
+from starlette.responses import Response
+
+# 导入我们的 limiter 实例
+from app.limiter import limiter
+
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.redis import RedisBackend
+from redis.asyncio import Redis as AsyncRedis # 注意这里导入的是异步redis
+#redis end
 
 # 导入我们的对话机器人核心
 from app.chatbot_pipeline import ChatbotPipeline, StreamEventType, StreamEvent
@@ -1975,6 +2110,22 @@ async def lifespan(app: FastAPI):
     FastAPI应用的生命周期管理器。
     在应用启动时执行yield之前的部分，在应用关闭时执行yield之后的部分。
     """
+    # --- Redis 连接配置 ---
+    # 我们复用limiter中的配置信息
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+    
+    # --- 应用启动时执行 ---
+    # 创建异步Redis连接
+    try:
+        r = AsyncRedis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}", encoding="utf8", decode_responses=True)
+        await r.ping()
+        logger.info("成功连接到 Redis (用于缓存)")
+        # 初始化 fastapi-cache
+        FastAPICache.init(RedisBackend(r), prefix="fastapi-cache")
+        logger.info("FastAPI-Cache 已初始化")
+    except Exception as e:
+        logger.error(f"连接 Redis 或初始化缓存失败: {e}")
     # --- 应用启动时执行 ---
     global pipeline
     logger.info("应用启动，正在初始化...")
@@ -2013,6 +2164,12 @@ app = FastAPI(
     description="一个支持实时流式响应、具备记忆和可热重载角色的高级对话平台",
     lifespan=lifespan # <--- 在这里注册
 )
+
+# --- 集成速率限制 ---
+# 将limiter实例附加到app.state
+app.state.limiter = limiter
+# 添加速率限制超出时的异常处理器
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 注册API路由
 app.include_router(api_router, prefix="/api", tags=["auth"])
@@ -2330,6 +2487,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "email-validator>=2.2.0",
     "fastapi>=0.116.1",
+    "fastapi-cache2>=0.2.2",
     "jieba>=0.42.1",
     "langchain>=0.3.26",
     "langchain-chroma>=0.2.5",
@@ -2340,12 +2498,15 @@ dependencies = [
     "pandas>=2.3.1",
     "passlib[bcrypt]>=1.7.4",
     "psycopg2>=2.9.10",
+    "psycopg2-binary>=2.9.10",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "python-jose[cryptography]>=3.5.0",
     "python-multipart>=0.0.20",
     "rank-bm25>=0.2.2",
+    "redis>=6.4.0",
     "sentence-transformers>=5.0.0",
+    "slowapi>=0.1.9",
     "sqlalchemy[asyncio]>=2.0.41",
     "sse-starlette>=3.0.2",
     "uvicorn>=0.35.0",

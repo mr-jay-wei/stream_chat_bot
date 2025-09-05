@@ -9,7 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
+from dotenv import load_dotenv
+load_dotenv()
+import os
 
+#redis begin
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
@@ -17,6 +21,11 @@ from starlette.responses import Response
 
 # 导入我们的 limiter 实例
 from app.limiter import limiter
+
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.redis import RedisBackend
+from redis.asyncio import Redis as AsyncRedis # 注意这里导入的是异步redis
+#redis end
 
 # 导入我们的对话机器人核心
 from app.chatbot_pipeline import ChatbotPipeline, StreamEventType, StreamEvent
@@ -42,6 +51,22 @@ async def lifespan(app: FastAPI):
     FastAPI应用的生命周期管理器。
     在应用启动时执行yield之前的部分，在应用关闭时执行yield之后的部分。
     """
+    # --- Redis 连接配置 ---
+    # 我们复用limiter中的配置信息
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+    
+    # --- 应用启动时执行 ---
+    # 创建异步Redis连接
+    try:
+        r = AsyncRedis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}", encoding="utf8", decode_responses=True)
+        await r.ping()
+        logger.info("成功连接到 Redis (用于缓存)")
+        # 初始化 fastapi-cache
+        FastAPICache.init(RedisBackend(r), prefix="fastapi-cache")
+        logger.info("FastAPI-Cache 已初始化")
+    except Exception as e:
+        logger.error(f"连接 Redis 或初始化缓存失败: {e}")
     # --- 应用启动时执行 ---
     global pipeline
     logger.info("应用启动，正在初始化...")
