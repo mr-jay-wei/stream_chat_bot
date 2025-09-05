@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
+from .models import User
 
 from .database import get_db
 from .auth import (
@@ -272,27 +273,36 @@ def delete_chat_session(
 @router.delete("/messages/{message_id}")
 def delete_message(
     message_id: int,
-    current_user = Depends(get_current_user),
+    current_user: User = Depends(get_current_user), # 明确类型提示
     db: Session = Depends(get_db)
 ):
     """删除指定的消息"""
     try:
-        # 删除消息（确保属于当前用户）
-        # success = UserService.delete_message(db, message_id, current_user.id)
-        success = False  # 暂时返回False，因为Message功能被注释了
-        if success:
-            logger.info(f"用户 {current_user.email} 删除消息 {message_id}")
+        from .models import Message, ChatSession # 局部导入模型
+        
+        # 查询消息，并联结ChatSession以验证用户所有权
+        message_to_delete = db.query(Message).join(ChatSession).filter(
+            Message.id == message_id,
+            ChatSession.user_id == current_user.id
+        ).first()
+
+        if message_to_delete:
+            db.delete(message_to_delete)
+            db.commit()
+            logger.info(f"用户 {current_user.email} 成功删除消息 {message_id}")
             return {"message": "消息删除成功"}
         else:
+            # 如果消息不存在，或不属于当前用户，则引发404错误
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="消息不存在或无权限删除"
             )
         
     except HTTPException:
-        raise
+        raise # 重新抛出已知的HTTP异常
     except Exception as e:
-        logger.error(f"删除消息失败: {e}")
+        logger.error(f"删除消息 {message_id} 时发生内部错误: {e}")
+        db.rollback() # 发生未知错误时回滚
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="删除消息失败"

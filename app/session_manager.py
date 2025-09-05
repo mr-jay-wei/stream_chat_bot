@@ -67,7 +67,7 @@ class SessionManager:
                     "id": msg.id,
                     "role": msg.role,
                     "content": msg.content,
-                    "timestamp": msg.created_at
+                    "timestamp": msg.created_at.isoformat() + "Z"
                 })
             
             return message_list
@@ -139,8 +139,8 @@ class SessionManager:
                     "id": session.id,
                     "title": session.title,
                     "preview": preview,
-                    "created_at": session.created_at.isoformat(),
-                    "updated_at": session.updated_at.isoformat(),
+                    "created_at": session.created_at.isoformat() + "Z",
+                    "updated_at": session.updated_at.isoformat() + "Z",
                     "message_count": len(session.messages)
                 })
             
