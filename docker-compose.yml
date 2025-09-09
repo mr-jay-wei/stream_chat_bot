@@ -1,0 +1,43 @@
+# docker-compose.yml
+# 用于本地开发环境的服务编排
+
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库服务
+  postgres:
+    image: postgres:15-alpine  # 使用轻量的 Alpine 版本的 PostgreSQL 15 镜像
+    container_name: chatbot-postgres
+    environment:
+      # 这里设置的用户名、密码、数据库名必须与您本地的 .env 文件一致
+      POSTGRES_USER: ${DB_USER:-chatbot_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-052756}
+      POSTGRES_DB: ${DB_NAME:-chatbot_db}
+    ports:
+      # 将容器的5432端口映射到您电脑的5432端口
+      # 格式: "宿主机端口:容器端口"
+      - "5432:5432"
+    volumes:
+      # 将数据库的数据持久化存储在本地的 .postgres-data 目录中
+      # 这样即使容器被删除，您的数据也不会丢失
+      - ./.postgres-data:/var/lib/postgresql/data
+    networks:
+      - chatbot-net
+
+  # Redis 缓存与限流服务
+  redis:
+    image: redis:7-alpine  # 使用轻量的 Alpine 版本的 Redis 7 镜像
+    container_name: chatbot-redis
+    ports:
+      # 将容器的6379端口映射到您电脑的6379端口
+      - "6379:6379"
+    volumes:
+      # 将Redis的数据持久化存储在本地的 .redis-data 目录中
+      - ./.redis-data:/data
+    networks:
+      - chatbot-net
+
+networks:
+  # 定义一个自定义网络，让所有服务都在一个隔离的环境中
+  chatbot-net:
+    driver: bridge
