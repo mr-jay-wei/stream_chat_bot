@@ -7,7 +7,7 @@ wheels/
 *.egg-info
 .vscode
 .env
-.postgres-data
-.redis-data
+.postgres-data/
+.redis-data/
 # Virtual environments
 .venv
