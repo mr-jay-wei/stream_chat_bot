@@ -1,41 +1,50 @@
 // mobile/context/AuthContext.js
 import React, { createContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import apiClient from '../api'; // 导入我们配置好的axios实例
+import apiClient from '../api';
 
-// 1. 创建上下文对象
 export const AuthContext = createContext();
 
-// 2. 创建一个 Provider 组件
 export const AuthProvider = ({ children }) => {
   const [userToken, setUserToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [userInfo, setUserInfo] = useState(null);
 
-  // 登录函数 【直接在这里实现】
+  // 登出函数 (保持不变)
+  const logout = async () => {
+    setUserToken(null);
+    setUserInfo(null);
+    delete apiClient.defaults.headers.common['Authorization'];
+    await SecureStore.deleteItemAsync('userToken');
+  };
+  
+  // 登录函数 (保持不变)
   const login = async (email, password) => {
     try {
-      // 使用原始的 apiClient 发送请求
       const response = await apiClient.post('/login', { email, password });
       const token = response.data.access_token;
       
+      // 设置请求头是第一优先级的操作
+      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      // 然后再更新状态和持久化存储
       setUserToken(token);
       setUserInfo({ email: response.data.user_email });
       await SecureStore.setItemAsync('userToken', token);
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
       return response.data;
     } catch (e) {
       console.error('Login error in AuthContext', e);
+      // 登录失败时，确保清理所有可能存在的旧状态
+      await logout(); 
       throw e;
     }
   };
 
-  // 注册函数 【直接在这里实现】
+  // 注册函数 (保持不变)
   const register = async (email, password) => {
     try {
       const response = await apiClient.post('/register', { email, password });
-      // 注册成功不自动登录，让用户去登录页手动登录，流程更清晰
       return response.data;
     } catch (e) {
       console.error('Register error in AuthContext', e);
@@ -43,38 +52,31 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 登出函数
-  const logout = async () => {
-    setIsLoading(true);
-    setUserToken(null);
-    setUserInfo(null);
-    await SecureStore.deleteItemAsync('userToken');
-    delete apiClient.defaults.headers.common['Authorization'];
-    setIsLoading(false);
-  };
-
-  // 检查用户是否已登录的函数
-  const isLoggedIn = async () => {
-    try {
-      setIsLoading(true);
-      const token = await SecureStore.getItemAsync('userToken');
-      if (token) {
-        setUserToken(token);
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        const meResponse = await apiClient.get('/me');
-        setUserInfo(meResponse.data);
-      }
-    } catch (e) {
-      // Token可能过期或无效，确保登出
-      console.log("Token check failed, logging out.", e);
-      await logout(); // 调用logout来清理状态
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // 【核心重构】: isLogged In 函数
   useEffect(() => {
-    isLoggedIn();
+    const bootstrapAsync = async () => {
+      let token;
+      try {
+        token = await SecureStore.getItemAsync('userToken');
+        if (token) {
+          // 先设置请求头，再去验证
+          apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          // 验证 token 有效性
+          const meResponse = await apiClient.get('/me');
+          setUserInfo(meResponse.data);
+          setUserToken(token);
+        }
+      } catch (e) {
+        // 如果token无效或任何步骤出错，都静默地清除
+        console.log('Bootstrap failed, token invalid.', e);
+        await SecureStore.deleteItemAsync('userToken');
+        delete apiClient.defaults.headers.common['Authorization'];
+      } finally {
+        // 无论成功与否，最后都结束加载状态
+        setIsLoading(false);
+      }
+    };
+    bootstrapAsync();
   }, []);
   
   const authContextValue = {

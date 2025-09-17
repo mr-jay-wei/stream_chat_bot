@@ -20,7 +20,7 @@ mobile/
 │   ├── devices.json
 │   └── README.md
 ├── api
-│   ├── auth.js
+│   ├── chat.js
 │   └── index.js
 ├── assets
 │   └── images
@@ -166,40 +166,25 @@ app-example
 
 ```
 
-## `api/auth.js`
+## `api/chat.js`
 
 ```javascript
-// mobile/api/auth.js
+// mobile/api/chat.js
 import apiClient from './index';
 
 /**
- * 用户登录函数
- * @param {string} email 用户的邮箱
- * @param {string} password 用户的密码
- * @returns {Promise<object>} 返回包含token和用户信息的对象
+ * 获取指定会话的历史消息
+ * @param {number} sessionId 会话ID
+ * @returns {Promise<Array>} 消息列表
  */
-export const login = async (email, password) => {
+export const getSessionMessages = async (sessionId) => {
+  if (!sessionId) return [];
   try {
-    const response = await apiClient.post('/login', { email, password });
-    return response.data; // 成功时，FastAPI返回 { access_token, token_type, user_email }
+    const response = await apiClient.get(`/chat-sessions/${sessionId}/messages`);
+    return response.data.messages || []; // 确保即使没有消息也返回一个空数组
   } catch (error) {
-    // 如果请求失败，抛出错误，以便UI层可以捕获
-    throw error.response?.data || new Error('登录请求失败');
-  }
-};
-
-/**
- * 用户注册函数
- * @param {string} email 用户的邮箱
- * @param {string} password 用户的密码
- * @returns {Promise<object>} 返回包含token和用户信息的对象
- */
-export const register = async (email, password) => {
-  try {
-    const response = await apiClient.post('/register', { email, password });
-    return response.data; // 成功时，FastAPI返回 { access_token, token_type, user_email }
-  } catch (error) {
-    throw error.response?.data || new Error('注册请求失败');
+    console.error('Failed to fetch session messages:', error);
+    throw error;
   }
 };
 ```
@@ -319,39 +304,30 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [userInfo, setUserInfo] = useState(null);
 
-  // 登录函数
+  // 登录函数 【直接在这里实现】
   const login = async (email, password) => {
     try {
+      // 使用原始的 apiClient 发送请求
       const response = await apiClient.post('/login', { email, password });
       const token = response.data.access_token;
       
       setUserToken(token);
       setUserInfo({ email: response.data.user_email });
-
-      // 将 token 安全地存储到手机
       await SecureStore.setItemAsync('userToken', token);
-      
-      // 在 apiClient 的请求头中设置 Authorization，这样后续所有请求都会带上token
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
-      return response.data; // 返回数据给调用方
+      return response.data;
     } catch (e) {
       console.error('Login error in AuthContext', e);
-      throw e; // 将错误抛出，让UI层处理
+      throw e;
     }
   };
 
-  // 注册函数 (为了统一管理，我们也把它放在这里)
+  // 注册函数 【直接在这里实现】
   const register = async (email, password) => {
     try {
       const response = await apiClient.post('/register', { email, password });
-      // 注册成功后，我们直接帮用户登录
-      const token = response.data.access_token;
-      setUserToken(token);
-      setUserInfo({ email: response.data.user_email });
-      await SecureStore.setItemAsync('userToken', token);
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
+      // 注册成功不自动登录，让用户去登录页手动登录，流程更清晰
       return response.data;
     } catch (e) {
       console.error('Register error in AuthContext', e);
@@ -364,48 +340,35 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(true);
     setUserToken(null);
     setUserInfo(null);
-    // 从手机安全存储中移除 token
     await SecureStore.deleteItemAsync('userToken');
-    // 移除 apiClient 请求头中的 Authorization
     delete apiClient.defaults.headers.common['Authorization'];
     setIsLoading(false);
   };
 
-  // 检查用户是否已登录的函数 (App启动时调用)
+  // 检查用户是否已登录的函数
   const isLoggedIn = async () => {
     try {
       setIsLoading(true);
       const token = await SecureStore.getItemAsync('userToken');
-
       if (token) {
         setUserToken(token);
-        // 如果有token，也需要为apiClient设置请求头
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
-        // (可选但推荐) 可以加一个/me接口验证token有效性，并获取用户信息
-        try {
-          const meResponse = await apiClient.get('/me');
-          setUserInfo(meResponse.data);
-        } catch(e) {
-          // Token可能过期或无效，登出处理
-          console.log("Token validation failed, logging out.");
-          await logout();
-        }
-
+        const meResponse = await apiClient.get('/me');
+        setUserInfo(meResponse.data);
       }
     } catch (e) {
-      console.error('isLoggedIn error', e);
+      // Token可能过期或无效，确保登出
+      console.log("Token check failed, logging out.", e);
+      await logout(); // 调用logout来清理状态
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 首次加载时，检查登录状态
   useEffect(() => {
     isLoggedIn();
   }, []);
-
-  // 3. Provider 向下传递的值
+  
   const authContextValue = {
     login,
     logout,
@@ -542,8 +505,10 @@ export default function AppNavigator() {
     "react-native-reanimated": "~4.1.0",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
+    "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.5.1"
+    "react-native-worklets": "0.5.1",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
@@ -723,18 +688,18 @@ const styles = StyleSheet.create({
 
 ```javascript
 // mobile/screens/Auth/RegisterScreen.js
-import React, { useState, useContext } from 'react'; // 👈 导入 useContext
+import React, { useState, useContext } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { AuthContext } from '../../context/AuthContext'; // 👈 导入 AuthContext
+import { AuthContext } from '../../context/AuthContext';
 
 export default function RegisterScreen({ navigation }) {
-  const { register } = useContext(AuthContext); // 👈 从 Context 获取 register 函数
+  const { register } = useContext(AuthContext);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleRegister = async () => { // 👈 改造为 async 函数
+  const handleRegister = async () => {
     if (!email || !password || !confirmPassword) {
       Alert.alert('错误', '请填写所有字段');
       return;
@@ -746,10 +711,15 @@ export default function RegisterScreen({ navigation }) {
 
     setLoading(true);
     try {
-      await register(email, password); // 👈 直接调用 context 的 register 函数
-      // 注册并自动登录成功后，AppNavigator会因userToken状态变化而自动跳转
-      // 我们可以给用户一个友好的提示
-      Alert.alert('成功', '账户创建成功，欢迎使用！');
+      // 调用Context中的register函数，现在它只负责注册
+      await register(email, password); 
+      
+      // 注册成功后，弹窗提示用户，并提供按钮返回登录页
+      Alert.alert(
+        '注册成功', 
+        '您的账户已创建，请返回登录页面进行登录。',
+        [{ text: '好的', onPress: () => navigation.goBack() }] // 点击按钮后执行 navigation.goBack()
+      );
       
     } catch (error) {
       // 从后端获取更具体的错误信息并显示
@@ -872,24 +842,162 @@ const styles = StyleSheet.create({
 
 ```javascript
 // mobile/screens/Main/ChatScreen.js
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useLayoutEffect, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { AuthContext } from '../../context/AuthContext';
+import { webSocketClient } from '../../services/WebSocketClient';
+import { getSessionMessages } from '../../api/chat';
+import MessageItem from '../../components/MessageItem';
 
-export default function ChatScreen() {
-    return (
-      <View style={styles.container}>
-        <Text>这是聊天主页面</Text>
-      </View>
-    );
-  }
+export default function ChatScreen({ navigation }) {
+  const { logout, userToken } = useContext(AuthContext);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [currentSessionId, setCurrentSessionId] = useState(null);
   
+  const currentBotMessageId = useRef(null);
+  const flatListRef = useRef(null);
+
+  // Effect for WebSocket connection management
+  useEffect(() => {
+    if (userToken && webSocketClient) {
+      if (!webSocketClient.ws || webSocketClient.ws.readyState === WebSocket.CLOSED) {
+        webSocketClient.connect(userToken);
+      }
+    }
+    return () => {
+      console.log("ChatScreen unmounting, closing WebSocket.");
+      if (webSocketClient && webSocketClient.ws) {
+        webSocketClient.close();
+      }
+    };
+  }, [userToken]);
+
+  // Effect for handling WebSocket messages
+  useEffect(() => {
+    const handleWebSocketMessage = (message) => {
+      if (message.type === 'processing' && message.data.session_id && currentSessionId === null) {
+        setCurrentSessionId(message.data.session_id);
+      }
+
+      setMessages(prevMessages => {
+        let newMessages = [...prevMessages];
+        switch (message.type) {
+          case 'generation_start':
+            const botPlaceholder = { id: `bot-${Date.now()}`, role: 'assistant', content: '' };
+            currentBotMessageId.current = botPlaceholder.id;
+            newMessages.push(botPlaceholder);
+            break;
+          case 'generation_chunk':
+            newMessages = newMessages.map(msg =>
+              msg.id === currentBotMessageId.current ? { ...msg, content: msg.content + message.data.chunk } : msg
+            );
+            break;
+          case 'complete':
+            const finalBotMessageId = message.data.ai_message_id;
+            const finalUserMessageId = message.data.user_message_id;
+            newMessages = newMessages.map(msg => {
+              if (msg.id === currentBotMessageId.current && finalBotMessageId) {
+                return { ...msg, id: finalBotMessageId.toString() };
+              }
+              const lastUserMsg = newMessages.filter(m => m.role === 'user' && String(m.id).startsWith('user-')).pop();
+              if (lastUserMsg && msg.id === lastUserMsg.id && finalUserMessageId) {
+                 return { ...msg, id: finalUserMessageId.toString() };
+              }
+              return msg;
+            });
+            currentBotMessageId.current = null;
+            break;
+        }
+        return newMessages;
+      });
+    };
+    
+    if(webSocketClient) {
+      webSocketClient.on('message', handleWebSocketMessage);
+    }
+
+    return () => {
+      console.log("Removing WebSocket message listener.");
+      if(webSocketClient) {
+        webSocketClient.removeListener('message', handleWebSocketMessage);
+      }
+    };
+  }, [currentSessionId]);
+
+  // Effect for setting navigation options
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity onPress={logout} style={{ marginRight: 10 }}>
+          <Text style={{ color: 'white', fontSize: 16 }}>登出</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, logout]);
+
+  // Effect for auto-scrolling
+  useEffect(() => {
+    if (flatListRef.current && messages.length > 0) {
+      flatListRef.current.scrollToEnd({ animated: false });
+    }
+  }, [messages]);
+
+  const handleSend = () => {
+    if (input.trim().length === 0) return;
+    const userMessage = { id: `user-${Date.now()}`, role: 'user', content: input };
+    setMessages(prev => [...prev, userMessage]);
+    
+    if (webSocketClient && webSocketClient.ws && webSocketClient.ws.readyState === WebSocket.OPEN) {
+      webSocketClient.sendMessage({ type: 'question', content: input, session_id: currentSessionId });
+    } else {
+      console.warn("WebSocket not ready, message not sent.");
+    }
+    setInput('');
+    Keyboard.dismiss();
+  };
+
+  const renderMessage = useCallback(({ item }) => <MessageItem item={item} />, []);
+
+  return (
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={90}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          style={styles.messageList}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>开始你的对话吧！</Text>
+            </View>
+          }
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={21}
+        />
+      </TouchableWithoutFeedback>
+      <View style={styles.inputContainer}>
+        <TextInput style={styles.input} value={input} onChangeText={setInput} placeholder="请输入您的问题..." />
+        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+          <Text style={styles.sendButtonText}>发送</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
 const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-  });
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  messageList: { flex: 1, paddingHorizontal: 10, paddingTop: 10 },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: '50%' },
+  emptyText: { fontSize: 18, color: '#aaa' },
+  inputContainer: { flexDirection: 'row', padding: 10, borderTopWidth: 1, borderTopColor: '#ddd', backgroundColor: 'white' },
+  input: { flex: 1, height: 40, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, paddingHorizontal: 15, backgroundColor: '#f5f5f5' },
+  sendButton: { marginLeft: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: '#667eea', borderRadius: 20, paddingHorizontal: 15 },
+  sendButtonText: { color: 'white', fontWeight: 'bold' },
+});
 ```
 
 ## `screens/Main/SessionListScreen.js`
@@ -898,7 +1006,34 @@ const styles = StyleSheet.create({
 
 ## `services/WebSocketClient.js`
 
-[文件为空]
+```javascript
+// mobile/services/WebSocketClient.js
+import 'react-native-url-polyfill/auto';
+import apiClient from '../api/index';
+
+const WEBSOCKET_URL = apiClient.defaults.baseURL.replace('http', 'ws').replace('/api', '/ws');
+
+class WebSocketClient {
+  // ... 内部代码完全不变 ...
+  constructor() { this.ws = null; this.listeners = {}; }
+  on(event, callback) { if (!this.listeners[event]) { this.listeners[event] = []; } this.listeners[event].push(callback); }
+  removeListener(event, callback) { if (this.listeners[event]) { this.listeners[event] = this.listeners[event].filter(l => l !== callback); } }
+  emit(event, data) { if (this.listeners[event]) { this.listeners[event].forEach(callback => callback(data)); } }
+  connect(token) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    this.ws = new WebSocket(WEBSOCKET_URL);
+    this.ws.onopen = () => { this.emit('open'); this.sendMessage({ type: 'auth', token }); };
+    this.ws.onmessage = (event) => { try { this.emit('message', JSON.parse(event.data)); } catch (e) { console.error('Parse error', e); } };
+    this.ws.onerror = (error) => { this.emit('error', error); };
+    this.ws.onclose = (event) => { this.emit('close'); this.ws = null; };
+  }
+  sendMessage(message) { if (this.ws && this.ws.readyState === WebSocket.OPEN) { this.ws.send(JSON.stringify(message)); } else { console.error('WS not connected.'); } }
+  close() { if (this.ws) { this.ws.close(); } }
+}
+
+// 【改动点】: 创建实例并使用命名导出
+export const webSocketClient = new WebSocketClient();
+```
 
 ## `tsconfig.json`
 
