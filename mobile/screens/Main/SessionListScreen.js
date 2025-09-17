@@ -1,15 +1,17 @@
 // mobile/screens/Main/SessionListScreen.js
 import React, { useState, useLayoutEffect, useCallback, useContext } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthContext } from '../../context/AuthContext';
-import { getUserSessions } from '../../api/chat';
+import { getUserSessions, deleteSession } from '../../api/chat';
+import SwipeableRow from '../../components/SwipeableRow';
 
 export default function SessionListScreen({ navigation }) {
   const { logout } = useContext(AuthContext);
   const [sessions, setSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // 每次进入页面时刷新列表
   useFocusEffect(
     useCallback(() => {
       const fetchSessions = async () => {
@@ -27,6 +29,7 @@ export default function SessionListScreen({ navigation }) {
     }, [])
   );
 
+  // 设置导航栏按钮
   useLayoutEffect(() => {
     navigation.setOptions({
       title: '我的对话',
@@ -43,11 +46,35 @@ export default function SessionListScreen({ navigation }) {
     });
   }, [navigation, logout]);
 
+  // 处理删除会话的逻辑
+  const handleDelete = (sessionId) => {
+    Alert.alert(
+      "确认删除",
+      "确定要删除这个对话吗？所有消息都将被永久删除。",
+      [
+        { text: "取消", style: "cancel" },
+        { 
+          text: "删除", 
+          onPress: async () => {
+            try {
+              await deleteSession(sessionId);
+              setSessions(prevSessions => prevSessions.filter(s => s.id !== sessionId));
+            } catch (error) {
+              Alert.alert("删除失败", "无法删除该对话，请稍后重试。");
+            }
+          },
+          style: "destructive" 
+        }
+      ]
+    );
+  };
+
   const renderItem = ({ item }) => (
-    <TouchableOpacity style={styles.sessionItem} onPress={() => navigation.navigate('Chat', { sessionId: item.id })}>
-      <Text style={styles.sessionTitle} numberOfLines={1}>{item.title}</Text>
-      <Text style={styles.sessionPreview} numberOfLines={1}>{item.preview}</Text>
-    </TouchableOpacity>
+    <SwipeableRow
+      item={item}
+      onDelete={() => handleDelete(item.id)}
+      onNavigate={() => navigation.navigate('Chat', { sessionId: item.id })}
+    />
   );
 
   if (isLoading) {
@@ -68,8 +95,5 @@ export default function SessionListScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { textAlign: 'center', fontSize: 16, color: '#999' },
-  sessionItem: { backgroundColor: 'white', padding: 20, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  sessionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
-  sessionPreview: { fontSize: 14, color: '#666' },
+  emptyText: { textAlign: 'center', fontSize: 16, color: '#999', lineHeight: 24 },
 });

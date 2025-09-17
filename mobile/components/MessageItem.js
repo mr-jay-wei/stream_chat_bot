@@ -1,15 +1,18 @@
 // mobile/components/MessageItem.js
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
-const MessageItem = ({ item }) => {
+const MessageItem = ({ item, onLongPress }) => {
   const isUser = item.role === 'user';
   
   return (
-    <View style={[
-      styles.messageContainer, 
-      isUser ? styles.userMessageContainer : styles.botMessageContainer
-    ]}>
+    <TouchableOpacity
+      onLongPress={() => onLongPress(item.id)}
+      style={[
+        styles.messageContainer, 
+        isUser ? styles.userMessageContainer : styles.botMessageContainer
+      ]}
+    >
       {item.role === 'assistant' && item.content === '' ? (
         <Text style={styles.typingIndicator}>...</Text>
       ) : (
@@ -20,7 +23,7 @@ const MessageItem = ({ item }) => {
           {item.content}
         </Text>
       )}
-    </View>
+    </TouchableOpacity>
   );
 };
 

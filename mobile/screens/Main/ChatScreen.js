@@ -3,11 +3,11 @@ import React, { useLayoutEffect, useContext, useState, useEffect, useRef, useCal
 import { 
   View, Text, StyleSheet, TextInput, TouchableOpacity, 
   FlatList, KeyboardAvoidingView, Platform, 
-  TouchableWithoutFeedback, Keyboard, ActivityIndicator 
+  TouchableWithoutFeedback, Keyboard, ActivityIndicator, Alert
 } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 import { webSocketClient } from '../../services/WebSocketClient';
-import { getSessionMessages } from '../../api/chat';
+import { getSessionMessages, deleteMessage } from '../../api/chat';
 import MessageItem from '../../components/MessageItem';
 
 export default function ChatScreen({ navigation, route }) {
@@ -139,8 +139,36 @@ export default function ChatScreen({ navigation, route }) {
     setInput('');
     Keyboard.dismiss();
   };
+  
+  const handleLongPressMessage = (messageId) => {
+    // 确保messageId是有效的，避免对临时消息进行操作
+    if (String(messageId).startsWith('bot-') || String(messageId).startsWith('user-')) {
+        return;
+    }
+    Alert.alert(
+      "确认删除",
+      "要删除这条消息吗？",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "删除",
+          onPress: async () => {
+            try {
+              await deleteMessage(messageId);
+              setMessages(prevMessages => prevMessages.filter(m => m.id !== messageId.toString()));
+            } catch (error) {
+              Alert.alert("删除失败", "无法删除该消息，请稍后重试。");
+            }
+          },
+          style: "destructive"
+        }
+      ]
+    );
+  };
 
-  const renderMessage = useCallback(({ item }) => <MessageItem item={item} />, []);
+  const renderMessage = useCallback(({ item }) => (
+    <MessageItem item={item} onLongPress={handleLongPressMessage} />
+  ), []);
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={90}>
