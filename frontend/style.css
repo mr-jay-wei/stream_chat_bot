@@ -580,6 +580,30 @@ body {
     margin-left: 2px;
 }
 
+/* 新增：自定义Logo图片样式 */
+.header-logo {
+    height: 28px; /* 控制标题栏logo的高度 */
+    width: 28px;
+    margin-right: 12px; /* 让logo和文字之间有点间距 */
+    vertical-align: middle; /* 让logo和文字垂直居中对齐 */
+}
+
+.welcome-logo {
+    height: 64px; /* 控制欢迎界面大logo的高度 */
+    width: 64px;
+}
+
+.avatar-logo {
+    height: 100%; /* 让聊天头像logo充满整个圆形背景 */
+    width: 100%;
+    border-radius: 50%; /* 确保logo图片也是圆的 */
+}
+
+/* 优化：确保bot头像背景是透明的，以便显示图片 */
+.bot-message .message-avatar {
+    background: transparent;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
     .sidebar {

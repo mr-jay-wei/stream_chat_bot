@@ -1,8 +1,6 @@
 # docker-compose.yml
 # 用于本地开发环境的服务编排
 
-version: '3.8'
-
 services:
   # PostgreSQL 数据库服务
   postgres:
@@ -16,7 +14,7 @@ services:
     ports:
       # 将容器的5432端口映射到您电脑的5432端口
       # 格式: "宿主机端口:容器端口"
-      - "5432:5432"
+      - "15432:5432"
     volumes:
       # 将数据库的数据持久化存储在本地的 .postgres-data 目录中
       # 这样即使容器被删除，您的数据也不会丢失

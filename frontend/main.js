@@ -282,9 +282,10 @@
     function clearChatHistory() {
         chatContainer.innerHTML = `
             <div class="welcome-message">
-                <div class="welcome-icon">🤖</div>
-                <h2>欢迎使用AI助手</h2>
-                <p>我是AI-Jay，随时准备为您服务。您可以问我任何问题！</p>
+                <div class="welcome-icon">
+                    <img src="/frontend/images/my-logo.png" alt="Welcome Logo" class="welcome-logo">
+                </div>
+                <p>我是蓬竹猫，随时准备为您服务。您可以问我任何问题！</p>
             </div>
         `;
         currentBotMessageDiv = null;
@@ -371,8 +372,11 @@
         messageDiv.className = `message ${type}-message`;
         if (messageId) messageDiv.dataset.messageId = messageId;
         
+        const avatarContent = type === 'user' ? '👤' : 
+            (type === 'bot' ? '<img src="/frontend/images/my-logo.png" alt="Bot Avatar" class="avatar-logo">' : 'ℹ️');
+
         messageDiv.innerHTML = `
-            <div class="message-avatar">${type === 'user' ? '👤' : (type === 'bot' ? '🤖' : 'ℹ️')}</div>
+            <div class="message-avatar">${avatarContent}</div>
             <div class="message-content">${content}</div>
         `;
         
