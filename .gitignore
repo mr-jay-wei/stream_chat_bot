@@ -11,3 +11,4 @@ wheels/
 .redis-data/
 # Virtual environments
 .venv
+log/
