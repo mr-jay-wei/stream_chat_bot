@@ -121,11 +121,17 @@ class ChatbotPipeline:
                     yield StreamEvent(type=StreamEventType.GENERATION_CHUNK, data={"chunk": char}, timestamp=time.time())
                     await asyncio.sleep(0.02)
             else:
-                async for chunk in self.llm.astream(messages):
-                    chunk_content = chunk.content if hasattr(chunk, 'content') else ""
-                    if chunk_content:
-                        complete_answer += chunk_content
-                        yield StreamEvent(type=StreamEventType.GENERATION_CHUNK, data={"chunk": chunk_content}, timestamp=time.time())
+                try:
+                    async for chunk in self.llm.astream(messages):
+                        chunk_content = chunk.content if hasattr(chunk, 'content') else ""
+                        if chunk_content:
+                            complete_answer += chunk_content
+                            yield StreamEvent(type=StreamEventType.GENERATION_CHUNK, data={"chunk": chunk_content}, timestamp=time.time())
+                except Exception as api_error:
+                    logger.error(f"LLM API 调用失败: {type(api_error).__name__} - {api_error}", exc_info=True)
+                    error_message = "抱歉，AI服务当前网络繁忙或响应超时，请稍后再试。"
+                    yield StreamEvent(type=StreamEventType.ERROR, data={"error": error_message}, timestamp=time.time())
+                    return
 
             ai_message_id = None
             if current_session_id:

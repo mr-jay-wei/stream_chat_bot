@@ -1,7 +1,7 @@
 // mobile/context/AuthContext.js
 import React, { createContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import apiClient from '../api';
+import apiClient from '../api/index';
 
 export const AuthContext = createContext();
 
