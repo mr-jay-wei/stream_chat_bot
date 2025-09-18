@@ -1,6 +1,14 @@
 // mobile/screens/Auth/RegisterScreen.js
 import React, { useState, useContext } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 
 export default function RegisterScreen({ navigation }) {
@@ -23,15 +31,14 @@ export default function RegisterScreen({ navigation }) {
     setLoading(true);
     try {
       // 调用Context中的register函数，现在它只负责注册
-      await register(email, password); 
-      
+      await register(email, password);
+
       // 注册成功后，弹窗提示用户，并提供按钮返回登录页
       Alert.alert(
-        '注册成功', 
+        '注册成功',
         '您的账户已创建，请返回登录页面进行登录。',
-        [{ text: '好的', onPress: () => navigation.goBack() }] // 点击按钮后执行 navigation.goBack()
+        [{ text: '好的', onPress: () => navigation.goBack() }], // 点击按钮后执行 navigation.goBack()
       );
-      
     } catch (error) {
       // 从后端获取更具体的错误信息并显示
       Alert.alert('注册失败', error.response?.data?.detail || '该邮箱可能已被注册，请重试');
@@ -43,7 +50,7 @@ export default function RegisterScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>创建新账户</Text>
-      
+
       <TextInput
         style={styles.input}
         placeholder="请输入邮箱"
@@ -53,7 +60,7 @@ export default function RegisterScreen({ navigation }) {
         autoCapitalize="none"
         editable={!loading}
       />
-      
+
       <TextInput
         style={styles.input}
         placeholder="请输入密码"

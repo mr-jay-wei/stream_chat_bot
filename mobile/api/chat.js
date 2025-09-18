@@ -6,7 +6,7 @@ import apiClient from './index';
  * @param {number} sessionId 会话ID
  * @returns {Promise<Array>} 消息列表
  */
-export const getSessionMessages = async (sessionId) => {
+export const getSessionMessages = async sessionId => {
   if (!sessionId) return [];
   try {
     const response = await apiClient.get(`/chat-sessions/${sessionId}/messages`);
@@ -36,7 +36,7 @@ export const getUserSessions = async () => {
  * @param {number} sessionId 要删除的会话ID
  * @returns {Promise<object>} 后端返回的成功信息
  */
-export const deleteSession = async (sessionId) => {
+export const deleteSession = async sessionId => {
   try {
     const response = await apiClient.delete(`/chat-sessions/${sessionId}`);
     return response.data;
@@ -51,12 +51,11 @@ export const deleteSession = async (sessionId) => {
  * @param {number} messageId 要删除的消息ID
  * @returns {Promise<object>} 后端返回的成功信息
  */
-export const deleteMessage = async (messageId) => {
+export const deleteMessage = async messageId => {
   try {
     const response = await apiClient.delete(`/messages/${messageId}`);
     return response.data;
-  } catch (error)
- {
+  } catch (error) {
     console.error(`Failed to delete message ${messageId}:`, error);
     throw error;
   }

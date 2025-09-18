@@ -1,7 +1,15 @@
 // mobile/screens/Auth/LoginScreen.js
 
 import React, { useState, useContext } from 'react'; // 👈 导入 useContext
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { AuthContext } from '../../context/AuthContext'; // 👈 导入 AuthContext
 
 export default function LoginScreen({ navigation }) {
@@ -34,10 +42,23 @@ export default function LoginScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>欢迎回来！</Text>
-      
+
       {/* ... TextInput部分保持不变 ... */}
-      <TextInput style={styles.input} placeholder="请输入邮箱" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-      <TextInput style={styles.input} placeholder="请输入密码" value={password} onChangeText={setPassword} secureTextEntry />
+      <TextInput
+        style={styles.input}
+        placeholder="请输入邮箱"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="请输入密码"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+      />
 
       <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
         {loading ? (

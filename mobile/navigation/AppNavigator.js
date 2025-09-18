@@ -20,11 +20,12 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{
-        headerStyle: { backgroundColor: '#667eea' },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: 'bold' },
-      }}>
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: { backgroundColor: '#667eea' },
+          headerTintColor: '#fff',
+          headerTitleStyle: { fontWeight: 'bold' },
+        }}>
         {userToken ? (
           <>
             <Stack.Screen name="SessionList" component={SessionListScreen} />

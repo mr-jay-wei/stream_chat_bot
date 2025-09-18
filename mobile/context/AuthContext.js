@@ -17,26 +17,26 @@ export const AuthProvider = ({ children }) => {
     delete apiClient.defaults.headers.common['Authorization'];
     await SecureStore.deleteItemAsync('userToken');
   };
-  
+
   // 登录函数 (保持不变)
   const login = async (email, password) => {
     try {
       const response = await apiClient.post('/login', { email, password });
       const token = response.data.access_token;
-      
+
       // 设置请求头是第一优先级的操作
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
+
       // 然后再更新状态和持久化存储
       setUserToken(token);
       setUserInfo({ email: response.data.user_email });
       await SecureStore.setItemAsync('userToken', token);
-      
+
       return response.data;
     } catch (e) {
       console.error('Login error in AuthContext', e);
       // 登录失败时，确保清理所有可能存在的旧状态
-      await logout(); 
+      await logout();
       throw e;
     }
   };
@@ -78,7 +78,7 @@ export const AuthProvider = ({ children }) => {
     };
     bootstrapAsync();
   }, []);
-  
+
   const authContextValue = {
     login,
     logout,
@@ -88,9 +88,5 @@ export const AuthProvider = ({ children }) => {
     isLoading,
   };
 
-  return (
-    <AuthContext.Provider value={authContextValue}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={authContextValue}>{children}</AuthContext.Provider>;
 };

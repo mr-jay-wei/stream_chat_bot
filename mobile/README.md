@@ -1,50 +1,52 @@
-# Welcome to your Expo app 👋
+# 蓬竹猫 - 移动端 App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+欢迎使用蓬竹猫移动App！这是一个使用 **React Native (Expo)** 构建的、功能完备的跨平台AI聊天应用。
 
-## Get started
+## ✨ 核心功能
 
-1. Install dependencies
+- **完整的用户认证**: 支持注册、登录、登出和持久化登录状态。
+- **多会话管理**: 在一个清晰的列表中查看、创建和删除你的所有对话。
+- **实时流式聊天**: 与AI进行实时的、带有“打字机”效果的流式对话。
+- **上下文记忆**: AI能够记住你在当前对话中提到的信息。
+- **专业的用户体验**: 支持下拉刷新、滑动删除、长按删除等现代App交互。
 
-   ```bash
-   npm install
-   ```
+## 🚀 启动指南
 
-2. Start the app
+在开始之前，请确保你已经成功启动了[后端服务](../README.md)。
 
-   ```bash
-   npx expo start
-   ```
+### 1. 安装依赖
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+在 `mobile/` 目录下，运行以下命令安装所有必需的JavaScript依赖包。
 
 ```bash
-npm run reset-project
+npm install
 ```
+### 2. 配置环境变量
+本项目需要一个.env文件来配置后端API的地址。
+```code
+Bash
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+# 在 mobile/ 目录下，复制模板文件
+cp .env_example .env
+```
+然后，打开新建的 .env 文件，修改 EXPO_PUBLIC_API_URL 的值为你电脑的局域网IP地址。例如：
+```code
+Code
+EXPO_PUBLIC_API_URL=http://192.168.1.10:28501/api
+```
+提示: 你可以在Windows上通过运行 ipconfig 命令来查找你的IPv4地址。
+### 3. 启动开发服务器
+一切准备就绪后，运行以下命令来启动Expo开发服务器：
+```code
+Bash
+npx expo start
+```
+### 4. 在手机上运行
+确保你的手机和电脑连接在同一个Wi-Fi下。
+在手机上从应用商店安装 Expo Go 应用。
+打开Expo Go，扫描终端上显示的二维码。
+App将会在你的手机上启动，现在你可以开始使用了！
+### 🛠️ 常用脚本
+- npm start: 启动开发服务器。
+- npm run format: 使用Prettier格式化所有代码。
+- npm run lint: 检查代码风格问题。

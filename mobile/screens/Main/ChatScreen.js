@@ -1,9 +1,25 @@
 // mobile/screens/Main/ChatScreen.js
-import React, { useLayoutEffect, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  View, Text, StyleSheet, TextInput, TouchableOpacity, 
-  FlatList, KeyboardAvoidingView, Platform, 
-  TouchableWithoutFeedback, Keyboard, ActivityIndicator, Alert
+import React, {
+  useLayoutEffect,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 import { webSocketClient } from '../../services/WebSocketClient';
@@ -18,7 +34,7 @@ export default function ChatScreen({ navigation, route }) {
   const [input, setInput] = useState('');
   const [currentSessionId, setCurrentSessionId] = useState(initialSessionId);
   const [isLoadingHistory, setIsLoadingHistory] = useState(!!initialSessionId);
-  
+
   const currentBotMessageId = useRef(null);
   const flatListRef = useRef(null);
 
@@ -30,7 +46,7 @@ export default function ChatScreen({ navigation, route }) {
       }
     }
     return () => {
-      console.log("ChatScreen unmounting, closing WebSocket.");
+      console.log('ChatScreen unmounting, closing WebSocket.');
       if (webSocketClient && webSocketClient.ws) {
         webSocketClient.close();
       }
@@ -39,7 +55,7 @@ export default function ChatScreen({ navigation, route }) {
 
   // Effect for handling WebSocket messages and loading history
   useEffect(() => {
-    const loadHistory = async (sessionId) => {
+    const loadHistory = async sessionId => {
       if (!sessionId) return;
       setIsLoadingHistory(true);
       try {
@@ -51,7 +67,7 @@ export default function ChatScreen({ navigation, route }) {
         }));
         setMessages(formattedMessages);
       } catch (error) {
-        console.error("加载历史消息失败", error);
+        console.error('加载历史消息失败', error);
       } finally {
         setIsLoadingHistory(false);
       }
@@ -60,8 +76,8 @@ export default function ChatScreen({ navigation, route }) {
     if (initialSessionId) {
       loadHistory(initialSessionId);
     }
-    
-    const handleWebSocketMessage = (message) => {
+
+    const handleWebSocketMessage = message => {
       if (message.type === 'processing' && message.data.session_id && currentSessionId === null) {
         console.log(`Session ID updated from null to: ${message.data.session_id}`);
         setCurrentSessionId(message.data.session_id);
@@ -77,7 +93,9 @@ export default function ChatScreen({ navigation, route }) {
             break;
           case 'generation_chunk':
             newMessages = newMessages.map(msg =>
-              msg.id === currentBotMessageId.current ? { ...msg, content: msg.content + message.data.chunk } : msg
+              msg.id === currentBotMessageId.current
+                ? { ...msg, content: msg.content + message.data.chunk }
+                : msg,
             );
             break;
           case 'complete':
@@ -87,9 +105,11 @@ export default function ChatScreen({ navigation, route }) {
               if (msg.id === currentBotMessageId.current && finalBotMessageId) {
                 return { ...msg, id: finalBotMessageId.toString() };
               }
-              const lastUserMsg = newMessages.filter(m => m.role === 'user' && String(m.id).startsWith('user-')).pop();
+              const lastUserMsg = newMessages
+                .filter(m => m.role === 'user' && String(m.id).startsWith('user-'))
+                .pop();
               if (lastUserMsg && msg.id === lastUserMsg.id && finalUserMessageId) {
-                 return { ...msg, id: finalUserMessageId.toString() };
+                return { ...msg, id: finalUserMessageId.toString() };
               }
               return msg;
             });
@@ -99,14 +119,14 @@ export default function ChatScreen({ navigation, route }) {
         return newMessages;
       });
     };
-    
-    if(webSocketClient) {
+
+    if (webSocketClient) {
       webSocketClient.on('message', handleWebSocketMessage);
     }
 
     return () => {
-      console.log("Removing WebSocket message listener.");
-      if(webSocketClient) {
+      console.log('Removing WebSocket message listener.');
+      if (webSocketClient) {
         webSocketClient.removeListener('message', handleWebSocketMessage);
       }
     };
@@ -115,7 +135,7 @@ export default function ChatScreen({ navigation, route }) {
   // Effect for setting navigation options dynamically
   useLayoutEffect(() => {
     navigation.setOptions({
-        title: initialSessionId ? '继续对话' : '新对话'
+      title: initialSessionId ? '继续对话' : '新对话',
     });
   }, [navigation, initialSessionId]);
 
@@ -130,48 +150,52 @@ export default function ChatScreen({ navigation, route }) {
     if (input.trim().length === 0) return;
     const userMessage = { id: `user-${Date.now()}`, role: 'user', content: input };
     setMessages(prev => [...prev, userMessage]);
-    
+
     if (webSocketClient && webSocketClient.ws && webSocketClient.ws.readyState === WebSocket.OPEN) {
-      webSocketClient.sendMessage({ type: 'question', content: input, session_id: currentSessionId });
+      webSocketClient.sendMessage({
+        type: 'question',
+        content: input,
+        session_id: currentSessionId,
+      });
     } else {
-      console.warn("WebSocket not ready, message not sent.");
+      console.warn('WebSocket not ready, message not sent.');
     }
     setInput('');
     Keyboard.dismiss();
   };
-  
-  const handleLongPressMessage = (messageId) => {
+
+  const handleLongPressMessage = messageId => {
     // 确保messageId是有效的，避免对临时消息进行操作
     if (String(messageId).startsWith('bot-') || String(messageId).startsWith('user-')) {
-        return;
+      return;
     }
-    Alert.alert(
-      "确认删除",
-      "要删除这条消息吗？",
-      [
-        { text: "取消", style: "cancel" },
-        {
-          text: "删除",
-          onPress: async () => {
-            try {
-              await deleteMessage(messageId);
-              setMessages(prevMessages => prevMessages.filter(m => m.id !== messageId.toString()));
-            } catch (error) {
-              Alert.alert("删除失败", "无法删除该消息，请稍后重试。");
-            }
-          },
-          style: "destructive"
-        }
-      ]
-    );
+    Alert.alert('确认删除', '要删除这条消息吗？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        onPress: async () => {
+          try {
+            await deleteMessage(messageId);
+            setMessages(prevMessages => prevMessages.filter(m => m.id !== messageId.toString()));
+          } catch (error) {
+            Alert.alert('删除失败', '无法删除该消息，请稍后重试。');
+          }
+        },
+        style: 'destructive',
+      },
+    ]);
   };
 
-  const renderMessage = useCallback(({ item }) => (
-    <MessageItem item={item} onLongPress={handleLongPressMessage} />
-  ), []);
+  const renderMessage = useCallback(
+    ({ item }) => <MessageItem item={item} onLongPress={handleLongPressMessage} />,
+    [],
+  );
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={90}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <View style={{ flex: 1 }}>
           {isLoadingHistory ? (
@@ -183,7 +207,7 @@ export default function ChatScreen({ navigation, route }) {
               ref={flatListRef}
               data={messages}
               renderItem={renderMessage}
-              keyExtractor={(item) => item.id}
+              keyExtractor={item => item.id}
               style={styles.messageList}
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
@@ -198,7 +222,12 @@ export default function ChatScreen({ navigation, route }) {
         </View>
       </TouchableWithoutFeedback>
       <View style={styles.inputContainer}>
-        <TextInput style={styles.input} value={input} onChangeText={setInput} placeholder="请输入您的问题..." />
+        <TextInput
+          style={styles.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder="请输入您的问题..."
+        />
         <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
           <Text style={styles.sendButtonText}>发送</Text>
         </TouchableOpacity>
@@ -213,8 +242,29 @@ const styles = StyleSheet.create({
   messageList: { flex: 1, paddingHorizontal: 10, paddingTop: 10 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: '50%' },
   emptyText: { fontSize: 18, color: '#aaa' },
-  inputContainer: { flexDirection: 'row', padding: 10, borderTopWidth: 1, borderTopColor: '#ddd', backgroundColor: 'white' },
-  input: { flex: 1, height: 40, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, paddingHorizontal: 15, backgroundColor: '#f5f5f5' },
-  sendButton: { marginLeft: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: '#667eea', borderRadius: 20, paddingHorizontal: 15 },
+  inputContainer: {
+    flexDirection: 'row',
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+    backgroundColor: 'white',
+  },
+  input: {
+    flex: 1,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    backgroundColor: '#f5f5f5',
+  },
+  sendButton: {
+    marginLeft: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#667eea',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+  },
   sendButtonText: { color: 'white', fontWeight: 'bold' },
 });

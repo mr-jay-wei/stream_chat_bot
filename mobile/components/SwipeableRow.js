@@ -23,8 +23,12 @@ const SwipeableRow = ({ item, onDelete, onNavigate }) => {
   return (
     <Swipeable renderRightActions={renderRightActions}>
       <TouchableOpacity style={styles.sessionItem} onPress={onNavigate}>
-        <Text style={styles.sessionTitle} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.sessionPreview} numberOfLines={1}>{item.preview}</Text>
+        <Text style={styles.sessionTitle} numberOfLines={1}>
+          {item.title}
+        </Text>
+        <Text style={styles.sessionPreview} numberOfLines={1}>
+          {item.preview}
+        </Text>
       </TouchableOpacity>
     </Swipeable>
   );
@@ -43,20 +47,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     padding: 20,
   },
-  sessionItem: { 
-    backgroundColor: 'white', 
-    padding: 20, 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#eee' 
+  sessionItem: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  sessionTitle: { 
-    fontSize: 16, 
-    fontWeight: 'bold', 
-    marginBottom: 5 
+  sessionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 5,
   },
-  sessionPreview: { 
-    fontSize: 14, 
-    color: '#666' 
+  sessionPreview: {
+    fontSize: 14,
+    color: '#666',
   },
 });
 
