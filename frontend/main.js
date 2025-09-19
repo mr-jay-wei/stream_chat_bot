@@ -285,7 +285,7 @@
                 <div class="welcome-icon">
                     <img src="/frontend/images/my-logo.png" alt="Welcome Logo" class="welcome-logo">
                 </div>
-                <p>我是蓬竹猫，随时准备为您服务。您可以问我任何问题！</p>
+                <p>我是哈基米，随时准备为您服务。您可以问我任何问题！</p>
             </div>
         `;
         currentBotMessageDiv = null;

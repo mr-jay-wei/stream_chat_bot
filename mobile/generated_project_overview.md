@@ -795,7 +795,7 @@ export default function MainTabNavigator() {
 ````text
 \# 哈基米 - 移动端 App
 
-欢迎使用蓬竹猫移动App！这是一个使用 **React Native (Expo)** 构建的、功能完备的跨平台AI聊天应用。
+欢迎使用哈基米移动App！这是一个使用 **React Native (Expo)** 构建的、功能完备的跨平台AI聊天应用。
 
 #\# ✨ 核心功能
 
