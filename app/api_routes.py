@@ -1,7 +1,7 @@
 # app/api_routes.py
 
 from datetime import timedelta
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from fastapi.security import HTTPBearer
 from fastapi_cache.decorator import cache
 from fastapi_cache.decorator import cache  # harmless duplicate import if any
 
-from .models import User, Conversation, Message, ChatSession
+from .models import User, Conversation, Message, ChatSession, Prompt
 from .database import get_db
 from .auth import (
     authenticate_user, create_user, create_access_token,
@@ -77,6 +77,22 @@ class UserInfo(BaseModel):
     email: str
     is_active: bool
 
+class PromptBase(BaseModel):
+    name: str
+    content: str
+
+class PromptCreate(PromptBase):
+    pass
+
+class PromptUpdate(PromptBase):
+    pass
+
+class PromptResponse(PromptBase):
+    id: int
+    user_id: int
+
+    class Config:
+        from_attributes = True # SQLAlchemy 2.0 orm_mode is deprecated
 
 # [FIX] 重构的 get_current_user 依赖函数
 def get_current_user(request: Request) -> User:
@@ -292,3 +308,76 @@ def delete_message(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="删除消息失败"
         )
+
+
+@router.get("/prompts", response_model=List[PromptResponse])
+def get_user_prompts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取当前登录用户的所有自定义Prompt"""
+    prompts = db.query(Prompt).filter(Prompt.user_id == current_user.id).all()
+    return prompts
+
+@router.post("/prompts", response_model=PromptResponse, status_code=status.HTTP_201_CREATED)
+def create_user_prompt(
+    prompt_data: PromptCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """为当前用户创建一个新的自定义Prompt"""
+    new_prompt = Prompt(**prompt_data.model_dump(), user_id=current_user.id)
+    db.add(new_prompt)
+    db.commit()
+    db.refresh(new_prompt)
+    logger.info(f"用户 {current_user.email} 创建了新的Prompt: {new_prompt.name}")
+    return new_prompt
+
+@router.put("/prompts/{prompt_id}", response_model=PromptResponse)
+def update_user_prompt(
+    prompt_id: int,
+    prompt_data: PromptUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """更新一个属于当前用户的Prompt"""
+    prompt_to_update = db.query(Prompt).filter(
+        Prompt.id == prompt_id,
+        Prompt.user_id == current_user.id
+    ).first()
+
+    if not prompt_to_update:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt不存在或不属于当前用户"
+        )
+
+    prompt_to_update.name = prompt_data.name
+    prompt_to_update.content = prompt_data.content
+    db.commit()
+    db.refresh(prompt_to_update)
+    logger.info(f"用户 {current_user.email} 更新了Prompt: {prompt_to_update.name}")
+    return prompt_to_update
+
+@router.delete("/prompts/{prompt_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user_prompt(
+    prompt_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除一个属于当前用户的Prompt"""
+    prompt_to_delete = db.query(Prompt).filter(
+        Prompt.id == prompt_id,
+        Prompt.user_id == current_user.id
+    ).first()
+
+    if not prompt_to_delete:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt不存在或不属于当前用户"
+        )
+    
+    db.delete(prompt_to_delete)
+    db.commit()
+    logger.info(f"用户 {current_user.email} 删除了Prompt ID: {prompt_id}")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

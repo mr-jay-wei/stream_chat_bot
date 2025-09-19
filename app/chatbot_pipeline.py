@@ -1,9 +1,7 @@
-# app/chatbot_pipeline.py
-
 import asyncio
 import time
 import os
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import AsyncGenerator, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
@@ -17,6 +15,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from dataclasses import dataclass
 from enum import Enum
+from sqlalchemy.orm import Session
+from .models import Prompt, ChatSession
 
 logger = get_logger(__name__)
 
@@ -64,7 +64,17 @@ class ChatbotPipeline:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.executor, func, *args)
 
-    async def ask_stream(self, question: str, db, user_id: int, session_id: Optional[int] = None) -> AsyncGenerator[StreamEvent, None]:
+    async def ask_stream(
+        self,
+        question: str,
+        db: Session,
+        user_id: int,
+        session_id: Optional[int] = None,
+        prompt_id: Optional[int] = None
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """
+        流式处理用户问题并返回 AI 回复
+        """
         try:
             yield StreamEvent(type=StreamEventType.PROCESSING, data={"message": "思考中..."}, timestamp=time.time())
 
@@ -73,30 +83,69 @@ class ChatbotPipeline:
             current_session_id = session_id
             user_message_id = None
 
+            # --- 创建新会话 ---
             if current_session_id is None:
-                current_session_id = session_manager.create_new_session(db, user_id, question)
+                current_session_id = session_manager.create_new_session(db, user_id, question, prompt_id)
                 if current_session_id:
-                    yield StreamEvent(type=StreamEventType.PROCESSING, data={"message": "开始新对话", "session_id": current_session_id}, timestamp=time.time())
+                    yield StreamEvent(
+                        type=StreamEventType.PROCESSING,
+                        data={"message": "开始新对话", "session_id": current_session_id},
+                        timestamp=time.time()
+                    )
                 else:
                     raise Exception("创建新会话失败")
             else:
-                yield StreamEvent(type=StreamEventType.PROCESSING, data={"message": "继续对话", "session_id": current_session_id}, timestamp=time.time())
+                yield StreamEvent(
+                    type=StreamEventType.PROCESSING,
+                    data={"message": "继续对话", "session_id": current_session_id},
+                    timestamp=time.time()
+                )
 
+            # --- 保存用户消息 ---
             if current_session_id:
-                # [SECURITY FIX] 调用 add_message_to_session 时传入 user_id
-                user_message_id = session_manager.add_message_to_session(db, current_session_id, user_id, "user", question)
-                if user_message_id:
-                    logger.info(f"用户提问已保存到会话 {current_session_id}: 消息ID {user_message_id}")
-                else:
-                    # 如果保存失败（例如因为权限问题），则停止处理
-                    error_msg = f"保存用户消息失败，可能是权限问题。用户 {user_id}, 会话 {current_session_id}"
+                user_message_id = session_manager.add_message_to_session(
+                    db, current_session_id, user_id, "user", question
+                )
+                if not user_message_id:
+                    error_msg = f"保存用户消息失败。用户 {user_id}, 会话 {current_session_id}"
                     logger.error(error_msg)
                     yield StreamEvent(type=StreamEventType.ERROR, data={"error": error_msg}, timestamp=time.time())
                     return
 
-            system_prompt_template = prompt_manager.get_template(config.SYSTEM_PROMPT_NAME)
-            system_message_content = system_prompt_template.format()
+            # --- 构建 system prompt ---
+            system_message_content = ""
 
+            # 1. 优先从 session.prompt_id 获取
+            if current_session_id:
+                chat_session = db.query(ChatSession).filter_by(id=current_session_id, user_id=user_id).first()
+                if chat_session and chat_session.prompt_id:
+                    user_prompt = db.query(Prompt).filter(
+                        Prompt.id == chat_session.prompt_id,
+                        Prompt.user_id == user_id
+                    ).first()
+                    if user_prompt:
+                        system_message_content = user_prompt.content
+                        logger.info(f"会话 {current_session_id} 使用了Prompt: {user_prompt.name} (ID: {chat_session.prompt_id})")
+
+            # 2. 如果 session 没有绑定，尝试使用传入的 prompt_id
+            if not system_message_content and prompt_id:
+                user_prompt = db.query(Prompt).filter(
+                    Prompt.id == prompt_id,
+                    Prompt.user_id == user_id
+                ).first()
+                if user_prompt:
+                    system_message_content = user_prompt.content
+                    logger.info(f"用户 {user_id} 使用了自定义Prompt: {user_prompt.name} (ID: {prompt_id})")
+                else:
+                    logger.warning(f"用户 {user_id} 尝试使用无效的Prompt ID: {prompt_id}")
+
+            # 3. fallback 到默认 prompt
+            if not system_message_content:
+                system_prompt_template = prompt_manager.get_template(config.SYSTEM_PROMPT_NAME)
+                system_message_content = system_prompt_template.format()
+                logger.info(f"用户 {user_id} 使用了默认Prompt。")
+
+            # --- 构建历史上下文 ---
             chat_history = []
             if config.ENABLE_SHORT_TERM_MEMORY and current_session_id:
                 session_messages = session_manager.get_session_context_for_ai(db, current_session_id, user_id, max_messages=10)
@@ -111,8 +160,8 @@ class ChatbotPipeline:
 
             yield StreamEvent(type=StreamEventType.GENERATION_START, data={"message": "开始生成回答"}, timestamp=time.time())
 
+            # --- 调用 LLM ---
             complete_answer = ""
-            # ... (LLM 调用逻辑保持不变)
             api_key = os.getenv("API_KEY", "")
             if not api_key or "invalid" in api_key.lower():
                 mock_response = f"这是一个模拟回复。你的问题是：{question}。"
@@ -126,19 +175,25 @@ class ChatbotPipeline:
                         chunk_content = chunk.content if hasattr(chunk, 'content') else ""
                         if chunk_content:
                             complete_answer += chunk_content
-                            yield StreamEvent(type=StreamEventType.GENERATION_CHUNK, data={"chunk": chunk_content}, timestamp=time.time())
+                            yield StreamEvent(
+                                type=StreamEventType.GENERATION_CHUNK,
+                                data={"chunk": chunk_content},
+                                timestamp=time.time()
+                            )
                 except Exception as api_error:
                     logger.error(f"LLM API 调用失败: {type(api_error).__name__} - {api_error}", exc_info=True)
                     error_message = "抱歉，AI服务当前网络繁忙或响应超时，请稍后再试。"
                     yield StreamEvent(type=StreamEventType.ERROR, data={"error": error_message}, timestamp=time.time())
                     return
 
+            # --- 保存 AI 消息 ---
             ai_message_id = None
             if current_session_id:
-                # [SECURITY FIX] 调用 add_message_to_session 时传入 user_id
-                ai_message_id = session_manager.add_message_to_session(db, current_session_id, user_id, "assistant", complete_answer.strip())
+                ai_message_id = session_manager.add_message_to_session(
+                    db, current_session_id, user_id, "assistant", complete_answer.strip()
+                )
                 if not ai_message_id:
-                     logger.error(f"保存AI回答失败，可能是权限问题。用户 {user_id}, 会话 {current_session_id}")
+                    logger.error(f"保存AI回答失败。用户 {user_id}, 会话 {current_session_id}")
 
             yield StreamEvent(type=StreamEventType.GENERATION_END, data={"message": "生成完成"}, timestamp=time.time())
             yield StreamEvent(

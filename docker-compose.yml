@@ -28,7 +28,7 @@ services:
     container_name: chatbot-redis
     ports:
       # 将容器的6379端口映射到您电脑的6379端口
-      - "6379:6379"
+      - "16379:6379"
     volumes:
       # 将Redis的数据持久化存储在本地的 .redis-data 目录中
       - ./.redis-data:/data

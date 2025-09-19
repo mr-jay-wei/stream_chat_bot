@@ -137,7 +137,8 @@ async def websocket_endpoint(websocket: WebSocket):
             if message.get("type") == "question":
                 question = message.get("content", "")
                 session_id = message.get("session_id")
-                
+                prompt_id = message.get("prompt_id")
+
                 # [SECURITY FIX] 在处理前，校验 session_id (如果存在) 是否属于当前认证用户
                 if session_id:
                     from .models import ChatSession
@@ -156,7 +157,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 logger.info(f"用户 {authed_user.email} 在会话 {session_id} 中提问: {question}")
                 
-                async for event in pipeline.ask_stream(question, db, authed_user.id, session_id):
+                async for event in pipeline.ask_stream(question, db, authed_user.id, session_id, prompt_id):
                     await websocket.send_text(json.dumps({"type": event.type.value, "data": event.data}))
 
     except asyncio.TimeoutError:

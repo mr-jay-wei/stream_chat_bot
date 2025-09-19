@@ -19,6 +19,7 @@ class User(Base):
     # 关系
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
+    prompts = relationship("Prompt", back_populates="user", cascade="all, delete-orphan")
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
@@ -26,13 +27,15 @@ class ChatSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String, nullable=False)
+    prompt_id = Column(Integer, ForeignKey("prompts.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 关系
     user = relationship("User", back_populates="chat_sessions")
     messages = relationship("Message", back_populates="chat_session", cascade="all, delete-orphan")
-
+    prompt = relationship("Prompt") 
+    
 class Message(Base):
     __tablename__ = "messages"
     
@@ -58,3 +61,16 @@ class Conversation(Base):
     
     # 关系
     user = relationship("User", back_populates="conversations")
+
+class Prompt(Base):
+    __tablename__ = "prompts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # 建立与User模型的关系
+    user = relationship("User", back_populates="prompts")

@@ -1,31 +1,34 @@
-# app/session_manager.py
-
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 from sqlalchemy.orm import Session
 from datetime import datetime
-import uuid
 
-from .models import ChatSession, Message, User, Conversation
+from .models import ChatSession, Message, Conversation, Prompt
 from .logger_config import get_logger
 
 logger = get_logger(__name__)
 
 class SessionManager:
     """完整的会话管理器 - 支持真正的多轮对话会话"""
-    
+
     def __init__(self):
         self.active_sessions: Dict[int, List[Dict]] = {}
 
-    def create_new_session(self, db: Session, user_id: int, first_question: str) -> Optional[int]:
-        """创建新的会话"""
+    def create_new_session(self, db: Session, user_id: int, first_question: str, prompt_id: Optional[int] = None) -> Optional[int]:
+        """创建新的会话，可选绑定 prompt_id"""
         try:
             title = first_question[:50] + "..." if len(first_question) > 50 else first_question
-            chat_session = ChatSession(user_id=user_id, title=title)
+            chat_session = ChatSession(
+                user_id=user_id,
+                title=title,
+                prompt_id=prompt_id  # 🔑 新增：保存角色绑定
+            )
             db.add(chat_session)
             db.commit()
             db.refresh(chat_session)
             self.active_sessions[chat_session.id] = []
-            logger.info(f"创建新会话: {chat_session.id} for 用户 {user_id}, 标题: {title}")
+            logger.info(
+                f"创建新会话: {chat_session.id} for 用户 {user_id}, 标题: {title}, prompt_id={prompt_id}"
+            )
             return chat_session.id
         except Exception as e:
             logger.error(f"创建新会话失败: {e}")
@@ -42,9 +45,11 @@ class SessionManager:
             if not session:
                 logger.warning(f"会话 {session_id} 不存在或不属于用户 {user_id}")
                 return []
-            
-            messages = db.query(Message).filter(Message.chat_session_id == session_id).order_by(Message.created_at).all()
-            
+
+            messages = db.query(Message).filter(
+                Message.chat_session_id == session_id
+            ).order_by(Message.created_at).all()
+
             return [
                 {
                     "id": msg.id,
@@ -59,18 +64,17 @@ class SessionManager:
             return []
 
     def add_message_to_session(self, db: Session, session_id: int, user_id: int, role: str, content: str) -> Optional[int]:
-        """
-        添加消息到会话 (*关键安全修复*: 会强制校验会话所有权)
-        """
+        """添加消息到会话 (*安全校验*)"""
         try:
-            # [SECURITY FIX] 在写入前，必须验证会话存在且属于该用户
             session = db.query(ChatSession).filter(
                 ChatSession.id == session_id,
                 ChatSession.user_id == user_id
             ).first()
 
             if not session:
-                logger.error(f"安全警告：用户 {user_id} 尝试向不属于自己的会话 {session_id} 添加消息，操作被拒绝。")
+                logger.error(
+                    f"安全警告：用户 {user_id} 尝试向不属于自己的会话 {session_id} 添加消息，操作被拒绝。"
+                )
                 return None
 
             message = Message(chat_session_id=session_id, role=role, content=content)
@@ -81,17 +85,17 @@ class SessionManager:
 
             if session_id not in self.active_sessions:
                 self.active_sessions[session_id] = []
-            
+
             self.active_sessions[session_id].append({
                 "id": message.id,
                 "role": role,
                 "content": content,
                 "timestamp": message.created_at
             })
-            
+
             if len(self.active_sessions[session_id]) > 50:
                 self.active_sessions[session_id] = self.active_sessions[session_id][-50:]
-            
+
             logger.debug(f"添加消息到会话 {session_id}: {role} (用户 {user_id})")
             return message.id
         except Exception as e:
@@ -102,18 +106,27 @@ class SessionManager:
     def get_user_sessions(self, db: Session, user_id: int) -> List[Dict]:
         """获取用户的所有会话列表"""
         try:
-            sessions = db.query(ChatSession).filter(ChatSession.user_id == user_id).order_by(ChatSession.updated_at.desc()).limit(50).all()
+            sessions = db.query(ChatSession).filter(
+                ChatSession.user_id == user_id
+            ).order_by(ChatSession.updated_at.desc()).limit(50).all()
             session_list = []
             for session in sessions:
-                last_message = db.query(Message).filter(Message.chat_session_id == session.id).order_by(Message.created_at.desc()).first()
-                preview = last_message.content[:100] + "..." if last_message and len(last_message.content) > 100 else (last_message.content if last_message else "")
+                last_message = db.query(Message).filter(
+                    Message.chat_session_id == session.id
+                ).order_by(Message.created_at.desc()).first()
+                preview = (
+                    last_message.content[:100] + "..."
+                    if last_message and len(last_message.content) > 100
+                    else (last_message.content if last_message else "")
+                )
                 session_list.append({
                     "id": session.id,
                     "title": session.title,
                     "preview": preview,
                     "created_at": session.created_at.isoformat() + "Z",
                     "updated_at": session.updated_at.isoformat() + "Z",
-                    "message_count": len(session.messages)
+                    "message_count": len(session.messages),
+                    "prompt_id": session.prompt_id  # 🔑 新增：返回绑定角色
                 })
             return session_list
         except Exception as e:
@@ -144,14 +157,15 @@ class SessionManager:
 
     def get_session_context_for_ai(self, db: Session, session_id: int, user_id: int, max_messages: int = 10) -> List[Dict]:
         """获取会话上下文供AI使用 (会校验会话归属)"""
-        # get_session_messages 内部已经包含了用户ID校验，所以这里是安全的
         messages = self.get_session_messages(db, session_id, user_id)
         return messages[-max_messages:] if len(messages) > max_messages else messages
 
     def get_legacy_conversations(self, db: Session, user_id: int) -> List[Dict]:
         """获取旧的对话记录"""
         try:
-            conversations = db.query(Conversation).filter(Conversation.user_id == user_id).order_by(Conversation.created_at.desc()).limit(50).all()
+            conversations = db.query(Conversation).filter(
+                Conversation.user_id == user_id
+            ).order_by(Conversation.created_at.desc()).limit(50).all()
             return [
                 {
                     "id": conv.id,
