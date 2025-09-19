@@ -5,9 +5,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AuthContext } from '../context/AuthContext';
 import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
-import ChatScreen from '../screens/Main/ChatScreen';
 import LoadingScreen from '../screens/LoadingScreen';
-import SessionListScreen from '../screens/Main/SessionListScreen';
+import MainTabNavigator from './MainTabNavigator'; 
 
 const Stack = createNativeStackNavigator();
 
@@ -20,20 +19,18 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerStyle: { backgroundColor: '#667eea' },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: 'bold' },
-        }}>
+      <Stack.Navigator>
         {userToken ? (
-          <>
-            <Stack.Screen name="SessionList" component={SessionListScreen} />
-            <Stack.Screen name="Chat" component={ChatScreen} />
-          </>
+          // 登录后，加载整个Tab导航器，并隐藏它自己的头部
+          <Stack.Screen 
+            name="Main" 
+            component={MainTabNavigator} 
+            options={{ headerShown: false }}
+          />
         ) : (
+          // 未登录时，显示认证页面
           <>
-            <Stack.Screen name="Login" component={LoginScreen} options={{ title: '登录' }} />
+            <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Register" component={RegisterScreen} options={{ title: '注册' }} />
           </>
         )}

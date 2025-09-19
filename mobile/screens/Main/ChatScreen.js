@@ -1,26 +1,11 @@
 // mobile/screens/Main/ChatScreen.js
-import React, {
-  useLayoutEffect,
-  useContext,
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
-  ActivityIndicator,
-  Alert,
+import React, { useLayoutEffect, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { 
+  View, Text, StyleSheet, TextInput, TouchableOpacity, 
+  FlatList, KeyboardAvoidingView, Platform, 
+  TouchableWithoutFeedback, Keyboard, ActivityIndicator, Alert
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../../context/AuthContext';
 import { webSocketClient } from '../../services/WebSocketClient';
 import { getSessionMessages, deleteMessage } from '../../api/chat';
@@ -28,17 +13,16 @@ import MessageItem from '../../components/MessageItem';
 
 export default function ChatScreen({ navigation, route }) {
   const { logout, userToken } = useContext(AuthContext);
-  const initialSessionId = route.params?.sessionId;
+  const { sessionId, promptId } = route.params;
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [currentSessionId, setCurrentSessionId] = useState(initialSessionId);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(!!initialSessionId);
-
+  const [currentSessionId, setCurrentSessionId] = useState(sessionId);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(!!sessionId);
+  
   const currentBotMessageId = useRef(null);
   const flatListRef = useRef(null);
 
-  // Effect for WebSocket connection management
   useEffect(() => {
     if (userToken && webSocketClient) {
       if (!webSocketClient.ws || webSocketClient.ws.readyState === WebSocket.CLOSED) {
@@ -46,20 +30,18 @@ export default function ChatScreen({ navigation, route }) {
       }
     }
     return () => {
-      console.log('ChatScreen unmounting, closing WebSocket.');
       if (webSocketClient && webSocketClient.ws) {
         webSocketClient.close();
       }
     };
   }, [userToken]);
 
-  // Effect for handling WebSocket messages and loading history
   useEffect(() => {
-    const loadHistory = async sessionId => {
-      if (!sessionId) return;
+    const loadHistory = async (sid) => {
+      if (!sid) return;
       setIsLoadingHistory(true);
       try {
-        const historyMessages = await getSessionMessages(sessionId);
+        const historyMessages = await getSessionMessages(sid);
         const formattedMessages = historyMessages.map(msg => ({
           id: msg.id.toString(),
           role: msg.role,
@@ -67,79 +49,70 @@ export default function ChatScreen({ navigation, route }) {
         }));
         setMessages(formattedMessages);
       } catch (error) {
-        console.error('加载历史消息失败', error);
+        Alert.alert("加载失败", "无法加载历史消息。");
       } finally {
         setIsLoadingHistory(false);
       }
     };
 
-    if (initialSessionId) {
-      loadHistory(initialSessionId);
+    if (sessionId) {
+      loadHistory(sessionId);
     }
-
-    const handleWebSocketMessage = message => {
-      if (message.type === 'processing' && message.data.session_id && currentSessionId === null) {
-        console.log(`Session ID updated from null to: ${message.data.session_id}`);
+    
+    const handleWebSocketMessage = (message) => {
+      if (message.type === 'processing' && message.data?.session_id && currentSessionId === null) {
         setCurrentSessionId(message.data.session_id);
       }
-
+    
       setMessages(prevMessages => {
         let newMessages = [...prevMessages];
+    
         switch (message.type) {
-          case 'generation_start':
+          case 'generation_start': {
             const botPlaceholder = { id: `bot-${Date.now()}`, role: 'assistant', content: '' };
             currentBotMessageId.current = botPlaceholder.id;
             newMessages.push(botPlaceholder);
             break;
-          case 'generation_chunk':
-            newMessages = newMessages.map(msg =>
-              msg.id === currentBotMessageId.current
-                ? { ...msg, content: msg.content + message.data.chunk }
-                : msg,
-            );
+          }
+          case 'generation_chunk': {
+            const chunk = message.data?.chunk || '';
+            newMessages = newMessages.map(m => m.id === currentBotMessageId.current ? { ...m, content: m.content + chunk } : m);
             break;
-          case 'complete':
-            const finalBotMessageId = message.data.ai_message_id;
-            const finalUserMessageId = message.data.user_message_id;
-            newMessages = newMessages.map(msg => {
-              if (msg.id === currentBotMessageId.current && finalBotMessageId) {
-                return { ...msg, id: finalBotMessageId.toString() };
-              }
-              const lastUserMsg = newMessages
-                .filter(m => m.role === 'user' && String(m.id).startsWith('user-'))
-                .pop();
-              if (lastUserMsg && msg.id === lastUserMsg.id && finalUserMessageId) {
-                return { ...msg, id: finalUserMessageId.toString() };
-              }
-              return msg;
-            });
+          }
+          case 'complete': {
+            // 把占位符的 id 更新为后端返回的实际 id（如果有）
+            const aiId = message.data?.ai_message_id ? String(message.data.ai_message_id) : null;
+            newMessages = newMessages.map(m => m.id === currentBotMessageId.current ? (aiId ? { ...m, id: aiId } : m) : m);
             currentBotMessageId.current = null;
             break;
+          }
+          case 'error': {
+            Alert.alert('AI 错误', message.data?.error || '发生未知错误');
+            newMessages = newMessages.filter(m => m.id !== currentBotMessageId.current);
+            currentBotMessageId.current = null;
+            break;
+          }
+          default:
+            break;
         }
+    
         return newMessages;
       });
     };
-
-    if (webSocketClient) {
-      webSocketClient.on('message', handleWebSocketMessage);
-    }
-
+    
+    if(webSocketClient) webSocketClient.on('message', handleWebSocketMessage);
+    
     return () => {
-      console.log('Removing WebSocket message listener.');
-      if (webSocketClient) {
-        webSocketClient.removeListener('message', handleWebSocketMessage);
-      }
+      if(webSocketClient) webSocketClient.removeListener('message', handleWebSocketMessage);
     };
-  }, [initialSessionId, currentSessionId]);
+  }, [sessionId, currentSessionId]);
 
-  // Effect for setting navigation options dynamically
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: initialSessionId ? '继续对话' : '新对话',
+        title: sessionId ? '继续对话' : '新对话'
     });
-  }, [navigation, initialSessionId]);
+  }, [navigation, sessionId]);
 
-  // Effect for auto-scrolling
   useEffect(() => {
     if (flatListRef.current && messages.length > 0) {
       flatListRef.current.scrollToEnd({ animated: true });
@@ -150,121 +123,80 @@ export default function ChatScreen({ navigation, route }) {
     if (input.trim().length === 0) return;
     const userMessage = { id: `user-${Date.now()}`, role: 'user', content: input };
     setMessages(prev => [...prev, userMessage]);
-
+    
+    const payload = {
+      type: 'question',
+      content: input,
+      session_id: currentSessionId,
+    };
+    if (currentSessionId === null) {
+      payload.prompt_id = promptId;
+    }
+    
     if (webSocketClient && webSocketClient.ws && webSocketClient.ws.readyState === WebSocket.OPEN) {
-      webSocketClient.sendMessage({
-        type: 'question',
-        content: input,
-        session_id: currentSessionId,
-      });
+      webSocketClient.sendMessage(payload);
     } else {
-      console.warn('WebSocket not ready, message not sent.');
+      Alert.alert("连接错误", "无法发送消息，请检查网络连接。");
     }
     setInput('');
     Keyboard.dismiss();
   };
-
-  const handleLongPressMessage = messageId => {
-    // 确保messageId是有效的，避免对临时消息进行操作
-    if (String(messageId).startsWith('bot-') || String(messageId).startsWith('user-')) {
-      return;
-    }
-    Alert.alert('确认删除', '要删除这条消息吗？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        onPress: async () => {
+  
+  const handleLongPressMessage = (messageId) => {
+    if (String(messageId).startsWith('bot-') || String(messageId).startsWith('user-')) return;
+    Alert.alert("确认删除", "要删除这条消息吗？", [
+      { text: "取消" },
+      { text: "删除", onPress: async () => {
           try {
             await deleteMessage(messageId);
-            setMessages(prevMessages => prevMessages.filter(m => m.id !== messageId.toString()));
+            setMessages(prev => prev.filter(m => m.id !== messageId.toString()));
           } catch (error) {
-            Alert.alert('删除失败', '无法删除该消息，请稍后重试。');
+            Alert.alert("删除失败");
           }
-        },
-        style: 'destructive',
-      },
+        }, style: "destructive"
+      }
     ]);
   };
 
-  const renderMessage = useCallback(
-    ({ item }) => <MessageItem item={item} onLongPress={handleLongPressMessage} />,
-    [],
-  );
+  const renderMessage = useCallback(({ item }) => (
+    <MessageItem item={item} onLongPress={handleLongPressMessage} />
+  ), []);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={90}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <View style={{ flex: 1 }}>
-          {isLoadingHistory ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#667eea" />
-            </View>
-          ) : (
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              renderItem={renderMessage}
-              keyExtractor={item => item.id}
-              style={styles.messageList}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>开始你的对话吧！</Text>
-                </View>
-              }
-              initialNumToRender={15}
-              maxToRenderPerBatch={10}
-              windowSize={21}
-            />
-          )}
+    <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
+      <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={{ flex: 1 }}>
+            {isLoadingHistory ? (
+              <View style={styles.centered}><ActivityIndicator size="large" color="#667eea" /></View>
+            ) : (
+              <FlatList
+                ref={flatListRef} data={messages} renderItem={renderMessage}
+                keyExtractor={(item) => item.id} style={styles.messageList}
+                ListEmptyComponent={<View style={styles.centered}><Text style={styles.emptyText}>开始你的对话吧！</Text></View>}
+                initialNumToRender={15} maxToRenderPerBatch={10} windowSize={21}
+              />
+            )}
+          </View>
+        </TouchableWithoutFeedback>
+        <View style={styles.inputContainer}>
+          <TextInput style={styles.input} value={input} onChangeText={setInput} placeholder="请输入您的问题..." />
+          <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+            <Text style={styles.sendButtonText}>发送</Text>
+          </TouchableOpacity>
         </View>
-      </TouchableWithoutFeedback>
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={input}
-          onChangeText={setInput}
-          placeholder="请输入您的问题..."
-        />
-        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-          <Text style={styles.sendButtonText}>发送</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   messageList: { flex: 1, paddingHorizontal: 10, paddingTop: 10 },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: '50%' },
   emptyText: { fontSize: 18, color: '#aaa' },
-  inputContainer: {
-    flexDirection: 'row',
-    padding: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#ddd',
-    backgroundColor: 'white',
-  },
-  input: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    backgroundColor: '#f5f5f5',
-  },
-  sendButton: {
-    marginLeft: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#667eea',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-  },
+  inputContainer: { flexDirection: 'row', padding: 10, borderTopWidth: 1, borderTopColor: '#ddd', backgroundColor: 'white' },
+  input: { flex: 1, height: 40, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, paddingHorizontal: 15, backgroundColor: '#f0f0f0' },
+  sendButton: { marginLeft: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: '#667eea', borderRadius: 20, paddingHorizontal: 15 },
   sendButtonText: { color: 'white', fontWeight: 'bold' },
 });

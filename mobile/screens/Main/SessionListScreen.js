@@ -1,74 +1,65 @@
 // mobile/screens/Main/SessionListScreen.js
 import React, { useState, useLayoutEffect, useCallback, useContext } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, Button } from 'react-native';
+import { 
+  View, Text, StyleSheet, FlatList, TouchableOpacity, 
+  ActivityIndicator, Alert, ScrollView, Button 
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthContext } from '../../context/AuthContext';
 import { getUserSessions, deleteSession } from '../../api/chat';
+import { getPrompts } from '../../api/prompt';
 import SwipeableRow from '../../components/SwipeableRow';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SessionListScreen({ navigation }) {
-  const { logout } = useContext(AuthContext);
+  const { logout, userToken } = useContext(AuthContext);
   const [sessions, setSessions] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null); // 👈 新增：错误状态
+  const [prompts, setPrompts] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // 将数据获取逻辑封装成一个可复用的函数
-  const fetchSessions = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    if (!userToken) return;
     setIsLoading(true);
-    setError(null); // 每次获取前重置错误状态
+    setError(null);
     try {
-      const userSessions = await getUserSessions();
-      setSessions(userSessions);
+      const [sessionsData, promptsResponse] = await Promise.all([ getUserSessions(), getPrompts() ]);
+      setSessions(sessionsData);
+      setPrompts(promptsResponse.data);
     } catch (err) {
-      console.error("无法加载会话列表", err);
-      setError("无法加载会话列表，请检查您的网络连接。"); // 👈 设置错误信息
+      setError("无法加载数据，请检查网络并重试。");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [userToken]);
 
-  // 每次进入页面时，调用fetchSessions
-  useFocusEffect(
-    useCallback(() => {
-      fetchSessions();
-    }, [fetchSessions])
-  );
+  useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
-  // 设置导航栏按钮
   useLayoutEffect(() => {
     navigation.setOptions({
       title: '我的对话',
+      headerStyle: { backgroundColor: '#667eea' },
+      headerTintColor: '#fff',
       headerRight: () => (
         <TouchableOpacity onPress={logout} style={{ paddingHorizontal: 10 }}>
           <Text style={{ color: 'white', fontSize: 16 }}>登出</Text>
         </TouchableOpacity>
-      ),
-      headerLeft: () => (
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Chat', { sessionId: null })}
-          style={{ paddingHorizontal: 15 }}>
-          <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold' }}>+</Text>
-        </TouchableOpacity>
-      ),
+      )
     });
   }, [navigation, logout]);
 
-  // 处理删除会话的逻辑
-  const handleDelete = sessionId => {
-    Alert.alert('确认删除', '确定要删除这个对话吗？所有消息都将被永久删除。', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        onPress: async () => {
+  const handleDelete = (sessionId) => {
+    Alert.alert("确认删除", "此操作不可撤销。", [
+      { text: "取消" },
+      { text: "删除", onPress: async () => {
           try {
             await deleteSession(sessionId);
-            setSessions(prevSessions => prevSessions.filter(s => s.id !== sessionId));
+            setSessions(prev => prev.filter(s => s.id !== sessionId));
           } catch (error) {
-            Alert.alert('删除失败', '无法删除该对话，请稍后重试。');
+            Alert.alert('错误', '删除失败');
           }
-        },
-        style: 'destructive',
-      },
+        }, style: "destructive"
+      }
     ]);
   };
 
@@ -76,47 +67,66 @@ export default function SessionListScreen({ navigation }) {
     <SwipeableRow
       item={item}
       onDelete={() => handleDelete(item.id)}
-      onNavigate={() => navigation.navigate('Chat', { sessionId: item.id })}
+      onNavigate={() => navigation.navigate('Chat', { sessionId: item.id, promptId: null })}
     />
   );
 
-  // 根据不同状态，渲染不同的UI
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
+      <Text style={styles.headerTitle}>选择一个角色开始新对话</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promptScroll}>
+        <TouchableOpacity style={styles.promptChip} onPress={() => navigation.navigate('Chat', { sessionId: null, promptId: null })}>
+          <Text style={styles.promptChipText}>默认助手</Text>
+        </TouchableOpacity>
+        {prompts.map(prompt => (
+          <TouchableOpacity key={prompt.id} style={styles.promptChip} onPress={() => navigation.navigate('Chat', { sessionId: null, promptId: prompt.id })}>
+            <Text style={styles.promptChipText}>{prompt.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
   const renderContent = () => {
-    if (isLoading) {
+    if (isLoading && sessions.length === 0 && prompts.length === 0) {
       return <View style={styles.centered}><ActivityIndicator size="large" color="#667eea" /></View>;
     }
-
     if (error) {
       return (
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
-          <Button title="点我重试" onPress={fetchSessions} color="#667eea" />
+          <Button title="点我重试" onPress={fetchData} color="#667eea" />
         </View>
       );
     }
-
     return (
       <FlatList
         data={sessions}
         renderItem={renderItem}
         keyExtractor={item => item.id.toString()}
-        onRefresh={fetchSessions} // 👈 新增：下拉刷新功能
-        refreshing={isLoading}    // 👈 新增：控制下拉刷新的加载动画
-        ListEmptyComponent={
-          <View style={styles.centered}>
-            <Text style={styles.emptyText}>没有历史会话{"\n"}点击左上角 '+' 开始新聊天</Text>
-          </View>
-        }
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={<View style={styles.centered}><Text style={styles.emptyText}>没有历史对话</Text></View>}
+        onRefresh={fetchData}
+        refreshing={isLoading}
       />
     );
   };
-
-  return <View style={styles.container}>{renderContent()}</View>;
+  
+  return (
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+      {renderContent()}
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  emptyText: { textAlign: 'center', fontSize: 16, color: '#999', lineHeight: 24 },
+  headerContainer: { padding: 15, borderBottomWidth: 1, borderColor: '#eee', backgroundColor: 'white' },
+  headerTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#333' },
+  promptScroll: { paddingBottom: 5 },
+  promptChip: { backgroundColor: '#e9e9f7', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, marginRight: 10, justifyContent: 'center', alignItems: 'center' },
+  promptChipText: { color: '#43419a', fontWeight: '500' },
+  emptyText: { textAlign: 'center', fontSize: 16, color: '#999' },
   errorText: { textAlign: 'center', fontSize: 16, color: 'red', marginBottom: 20 },
 });
