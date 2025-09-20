@@ -710,7 +710,7 @@ class ChatbotPipeline:
         流式处理用户问题并返回 AI 回复
         """
         try:
-            from session_manager import session_manager # 修正导入路径
+            from .session_manager import session_manager # 修正导入路径
             
             current_session_id = session_id
 
