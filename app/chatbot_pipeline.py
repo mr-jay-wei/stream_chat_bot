@@ -76,30 +76,27 @@ class ChatbotPipeline:
         流式处理用户问题并返回 AI 回复
         """
         try:
-            yield StreamEvent(type=StreamEventType.PROCESSING, data={"message": "思考中..."}, timestamp=time.time())
-
-            from .session_manager import session_manager
+            from .session_manager import session_manager # 修正导入路径
             
             current_session_id = session_id
-            user_message_id = None
 
-            # --- 创建新会话 ---
             if current_session_id is None:
                 current_session_id = session_manager.create_new_session(db, user_id, question, prompt_id)
                 if current_session_id:
-                    yield StreamEvent(
+                    # --- 核心改动：确保关键事件优先发送 ---
+                    event = StreamEvent(
                         type=StreamEventType.PROCESSING,
-                        data={"message": "开始新对话", "session_id": current_session_id},
+                        data={"message": "已创建新会话", "session_id": current_session_id},
                         timestamp=time.time()
                     )
+                    yield event
+                    # 给事件循环一个处理的机会
+                    await asyncio.sleep(0.01)
                 else:
                     raise Exception("创建新会话失败")
-            else:
-                yield StreamEvent(
-                    type=StreamEventType.PROCESSING,
-                    data={"message": "继续对话", "session_id": current_session_id},
-                    timestamp=time.time()
-                )
+
+            # --- 第二个 processing 事件可以照常发送 ---
+            yield StreamEvent(type=StreamEventType.PROCESSING, data={"message": "思考中..."}, timestamp=time.time())
 
             # --- 保存用户消息 ---
             if current_session_id:

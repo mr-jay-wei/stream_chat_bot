@@ -81,12 +81,12 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(api_router, prefix="/api", tags=["auth"])
 
-project_root = Path(__file__).parent.parent
-app.mount("/frontend", StaticFiles(directory=project_root / "frontend"), name="frontend")
+# project_root = Path(__file__).parent.parent
+# app.mount("/frontend", StaticFiles(directory=project_root / "frontend"), name="frontend")
 
-@app.get("/")
-async def get_homepage():
-    return FileResponse(project_root / "frontend" / "index.html")
+# @app.get("/")
+# async def get_homepage():
+#     return FileResponse(project_root / "frontend" / "index.html")
 
 @app.get("/health")
 async def health_check():

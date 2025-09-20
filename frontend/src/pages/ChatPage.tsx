@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../hooks/useWebSocket';
 import apiClient from '../api/apiClient';
@@ -32,12 +32,14 @@ const ChatPage: React.FC = () => {
 
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [prompts, setPrompts] = useState<Prompt[]>([]);
-    const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isSending, setIsSending] = useState(false);
     const [nextPromptId, setNextPromptId] = useState<number | null>(null);
     const [currentPrompt, setCurrentPrompt] = useState<Prompt | null>(null);
+
+    const currentSessionIdRef = useRef<number | null>(null);
+    const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
 
     const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
     const [isPromptsManagerModalOpen, setIsPromptsManagerModalOpen] = useState(false);
@@ -45,11 +47,19 @@ const ChatPage: React.FC = () => {
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
+    const logSessionId = (location: string, value: number | null) => {
+        console.log(
+            `%c[SessionID Tracker] At ${location}: currentSessionIdRef.current = %c${value}`,
+            "color: blue; font-weight: bold;",
+            "color: red; font-size: 14px;"
+        );
+    };
+
     const promptMap = new Map<number, string>();
     prompts.forEach(p => promptMap.set(p.id, p.name));
     promptMap.set(0, "哈基米");
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const [sessionsRes, promptsRes] = await Promise.all([
                 apiClient.get<{ sessions: ChatSession[] }>('/chat-sessions'),
@@ -60,11 +70,11 @@ const ChatPage: React.FC = () => {
         } catch (error) {
             console.error("Failed to fetch data", error);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [fetchData]);
 
     const loadSessionMessages = async (sessionId: number) => {
         try {
@@ -72,7 +82,9 @@ const ChatPage: React.FC = () => {
             const sessionData = sessions.find(s => s.id === sessionId);
             
             setMessages(response.data.messages);
-            setCurrentSessionId(sessionId);
+            currentSessionIdRef.current = sessionId;
+            logSessionId('loadSessionMessages', sessionId);
+            setActiveSessionId(sessionId);
             setNextPromptId(null);
 
             if (sessionData) {
@@ -86,19 +98,19 @@ const ChatPage: React.FC = () => {
     
     useEffect(() => {
         if (!lastMessage) return;
+
         switch (lastMessage.type) {
             case 'processing':
-                if (lastMessage.data.session_id && currentSessionId === null) {
-                    const newSessionId = lastMessage.data.session_id;
-                    setCurrentSessionId(newSessionId);
-                    // 在收到新会话ID后，我们还需要更新左侧列表以包含这个新会话
-                    // 同时，我们把前端临时创建的用户消息替换为后端返回的真实消息
-                    setMessages(prev => prev.map(m => m.id > 0 ? m : {...m, chat_session_id: newSessionId}));
+                const newSessionId = lastMessage.data.session_id;
+                if (newSessionId && currentSessionIdRef.current === null) {
+                    currentSessionIdRef.current = newSessionId;
+                    logSessionId('WebSocket processing', newSessionId);
+                    setActiveSessionId(newSessionId);
                     fetchData();
                 }
                 break;
             case 'generation_start':
-                setMessages(prev => [...prev, { id: Date.now(), role: 'assistant', content: '', chat_session_id: currentSessionId! }]);
+                setMessages(prev => [...prev, { id: Date.now(), role: 'assistant', content: '', chat_session_id: currentSessionIdRef.current! }]);
                 break;
             case 'generation_chunk':
                 setMessages(prev => {
@@ -111,10 +123,6 @@ const ChatPage: React.FC = () => {
                 });
                 break;
             case 'complete':
-                // AI消息完成后，后端会返回真实的消息ID，我们用它来更新
-                if (lastMessage.data.ai_message_id) {
-                    setMessages(prev => prev.map(m => (m.content === lastMessage.data.final_content && m.role === 'assistant') ? { ...m, id: lastMessage.data.ai_message_id } : m));
-                }
                 setIsSending(false);
                 break;
             case 'error':
@@ -122,7 +130,7 @@ const ChatPage: React.FC = () => {
                  setIsSending(false);
                  break;
         }
-    }, [lastMessage, currentSessionId, prompts]);
+    }, [lastMessage, fetchData]);
 
     useEffect(() => {
         chatContainerRef.current?.scrollTo(0, chatContainerRef.current.scrollHeight);
@@ -130,11 +138,14 @@ const ChatPage: React.FC = () => {
 
     const handleSend = () => {
         if (!input.trim() || isSending) return;
-        const tempId = Date.now(); // 使用一个临时的唯一ID
-        const userMessage: Message = { id: tempId, role: 'user', content: input, chat_session_id: currentSessionId! };
+        const sessionIdToSend = currentSessionIdRef.current;
+        logSessionId('handleSend (before sending)', sessionIdToSend);
+        const userMessage: Message = { id: Date.now(), role: 'user', content: input, chat_session_id: sessionIdToSend! };
         setMessages(prev => [...prev, userMessage]);
-        const messagePayload: { type: string; content: string; session_id: number | null; prompt_id?: number | null } = { type: 'question', content: input, session_id: currentSessionId };
-        if (currentSessionId === null) {
+        const messagePayload: { type: string; content: string; session_id: number | null; prompt_id?: number | null } = {
+            type: 'question', content: input, session_id: sessionIdToSend,
+        };
+        if (sessionIdToSend === null) {
             messagePayload.prompt_id = nextPromptId;
             const prompt = prompts.find(p => p.id === nextPromptId);
             setCurrentPrompt(prompt || null);
@@ -146,7 +157,9 @@ const ChatPage: React.FC = () => {
     };
 
     const startNewChat = (promptId: number | null) => {
-        setCurrentSessionId(null);
+        currentSessionIdRef.current = null;
+        logSessionId('startNewChat', null);
+        setActiveSessionId(null);
         setMessages([]);
         setNextPromptId(promptId);
         setIsNewChatModalOpen(false);
@@ -159,10 +172,8 @@ const ChatPage: React.FC = () => {
         if (window.confirm("确定要删除这个对话吗？")) {
             try {
                 await apiClient.delete(`/chat-sessions/${sessionId}`);
-                if (currentSessionId === sessionId) {
-                    setCurrentSessionId(null);
-                    setMessages([]);
-                    setCurrentPrompt(null);
+                if (currentSessionIdRef.current === sessionId) {
+                    startNewChat(null);
                 }
                 fetchData();
             } catch (error) {
@@ -182,19 +193,12 @@ const ChatPage: React.FC = () => {
         }
     };
 
-    const currentChatTitle = currentPrompt ? currentPrompt.name : (currentSessionId !== null ? '哈基米' : '哈基米');
+    const currentChatTitle = currentPrompt ? currentPrompt.name : (activeSessionId !== null ? '哈基米' : '哈基米');
     
     const renderMessages = () => {
         return messages.map((msg, index) => {
             const showAvatar = index === 0 || messages[index - 1].role !== msg.role;
-            return (
-                <MessageItem
-                    key={msg.id || index}
-                    message={msg}
-                    showAvatar={showAvatar}
-                    onDelete={handleDeleteMessage}
-                />
-            );
+            return ( <MessageItem key={msg.id || index} message={msg} showAvatar={showAvatar} onDelete={handleDeleteMessage} /> );
         });
     };
 
@@ -209,14 +213,14 @@ const ChatPage: React.FC = () => {
                     <div className="chat-history-header">聊天记录</div>
                     <div className="chat-history-list">
                         {sessions.map(session => (
-                            <div key={session.id} className={`chat-history-item ${currentSessionId === session.id ? 'active' : ''}`} onClick={() => loadSessionMessages(session.id)}>
+                            <div key={session.id} className={`chat-history-item ${activeSessionId === session.id ? 'active' : ''}`} onClick={() => loadSessionMessages(session.id)}>
                                 <div className="chat-item-content">
                                     <div className="chat-title">{session.title}</div>
                                     <div className="chat-prompt-tag">
                                         {promptMap.get(session.prompt_id || 0) || '哈基米'}
                                     </div>
                                 </div>
-                                <button className="delete-session-btn" onClick={(e) => {e.stopPropagation(); handleDeleteSession(session.id)}}>🗑️</button>
+                                <button className="delete-session-btn" onClick={(e) => {e.stopPropagation(); handleDeleteSession(session.id);}} >🗑️</button>
                             </div>
                         ))}
                     </div>
@@ -228,14 +232,10 @@ const ChatPage: React.FC = () => {
                     </div>
                 </div>
             </div>
-
             <div className="main-content">
                 <div className="chat-header">
-                    <h1>
-                        <img src="/images/my-logo.png" alt="Logo" className="header-logo" /> 
-                        {currentChatTitle}
-                    </h1>
-                    <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>{isConnected ? '✅ 已连接' : '❌ 连接断开'}</div>
+                    <h1> <img src="/images/my-logo.png" alt="Logo" className="header-logo" /> {currentChatTitle} </h1>
+                    <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`} > {isConnected ? '✅ 已连接' : '❌ 连接断开'} </div>
                 </div>
                 <div className="chat-container" ref={chatContainerRef}>
                     {messages.length === 0 ? (
@@ -243,9 +243,7 @@ const ChatPage: React.FC = () => {
                             <img src="/images/my-logo.png" alt="Welcome Logo" className="welcome-logo" />
                             <p>{nextPromptId !== null ? `正在与 ${currentPrompt?.name || '哈基米'} 开始新对话，请输入...` : "我是哈基米，选择一个对话或新建对话开始吧！"}</p>
                         </div>
-                    ) : (
-                        renderMessages()
-                    )}
+                    ) : ( renderMessages() )}
                 </div>
                 <div className="input-container">
                     <div className="input-wrapper">
@@ -254,7 +252,6 @@ const ChatPage: React.FC = () => {
                     </div>
                 </div>
             </div>
-
             {isNewChatModalOpen && ( <NewChatModal prompts={prompts} onClose={() => setIsNewChatModalOpen(false)} onSelectPrompt={startNewChat} /> )}
             {isPromptsManagerModalOpen && ( <PromptsManagerModal onClose={() => { setIsPromptsManagerModalOpen(false); fetchData(); }} /> )}
         </div>

@@ -15,7 +15,7 @@ IGNORE_PATTERNS: Set[str] = {
     ".git", ".vscode", ".idea", "__pycache__", "node_modules", "venv", ".venv",
     ".env", "build", "dist", "*.pyc", "*.egg-info", "*.log",
     # UV 和数据相关文件/文件夹
-    "dist_electron",".postgres-data",".redis-data",
+    "dist_electron",".postgres-data",".redis-data","mobile",
     "dist_electron/*","test","mobile/.cursor","mobile/.expo/*",
     "uv.lock", "data", "my_chromadb_vector_store", "*/.pytest_cache", 
     # 特定路径忽略

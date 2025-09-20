@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-// --- 内联类型定义 ---
 export interface WebSocketEvent {
     type: 'auth_success' | 'auth_error' | 'processing' | 'generation_start' | 'generation_chunk' | 'generation_end' | 'complete' | 'error';
     data: any;
@@ -14,67 +13,86 @@ const getWebSocketURL = () => {
 export const useWebSocket = (token: string | null) => {
     const [isConnected, setIsConnected] = useState(false);
     const [lastMessage, setLastMessage] = useState<WebSocketEvent | null>(null);
+    
+    // ws.current 将永远指向最新的 WebSocket 实例
     const ws = useRef<WebSocket | null>(null);
+    
+    const reconnectTimer = useRef<number | null>(null);
 
+    // connect 函数现在不依赖任何外部变量，只负责连接逻辑
     const connect = useCallback(() => {
-        if (!token || (ws.current && ws.current.readyState === WebSocket.OPEN)) {
-            return;
+        if (!token) return;
+
+        // 清理旧连接
+        if (ws.current) {
+            ws.current.onclose = null;
+            ws.current.close();
         }
 
-        ws.current = new WebSocket(getWebSocketURL());
+        const socket = new WebSocket(getWebSocketURL());
+        ws.current = socket;
 
-        ws.current.onopen = () => {
+        socket.onopen = () => {
             console.log('WebSocket Connected');
             setIsConnected(true);
-            // 发送认证消息
-            ws.current?.send(JSON.stringify({ type: 'auth', token }));
+            socket.send(JSON.stringify({ type: 'auth', token }));
         };
 
-        ws.current.onmessage = (event) => {
+        socket.onmessage = (event) => {
             try {
                 const message: WebSocketEvent = JSON.parse(event.data);
-                 if (message.type === 'auth_success') {
-                    console.log("WebSocket Authenticated!");
-                }
                 setLastMessage(message);
             } catch (error) {
                 console.error('Failed to parse WebSocket message:', error);
             }
         };
 
-        ws.current.onerror = (error) => {
+        socket.onerror = (error) => {
             console.error('WebSocket Error:', error);
+            socket.close(); // 发生错误时主动关闭，会触发 onclose
         };
 
-        ws.current.onclose = () => {
+        socket.onclose = () => {
             console.log('WebSocket Disconnected');
             setIsConnected(false);
-            // 这里可以添加自动重连逻辑
-            setTimeout(() => {
-                console.log("Attempting to reconnect WebSocket...");
-                connect();
-            }, 3000); // 3秒后尝试重连
+
+            // 只有当当前socket实例是ws.current指向的实例时，才进行重连
+            // 这可以防止旧socket的onclose事件干扰新连接
+            if (ws.current === socket) {
+                if (reconnectTimer.current) {
+                    clearTimeout(reconnectTimer.current);
+                }
+                if (token) {
+                     reconnectTimer.current = window.setTimeout(() => {
+                        console.log("Attempting to reconnect WebSocket...");
+                        connect();
+                    }, 3000);
+                }
+            }
         };
     }, [token]);
 
     useEffect(() => {
-        if (token) {
-            connect();
-        }
+        connect();
         return () => {
+            if (reconnectTimer.current) {
+                clearTimeout(reconnectTimer.current);
+            }
             if (ws.current) {
-                // 清理onclose事件监听器，防止在组件卸载后还执行重连
                 ws.current.onclose = null; 
                 ws.current.close();
             }
         };
-    }, [token, connect]);
+    }, [connect]);
 
+    // --- 核心修正：sendMessage 不再依赖于旧闭包 ---
+    // sendMessage 函数在每次调用时，都直接从 ws.current 获取最新的socket实例
     const sendMessage = (message: object) => {
         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify(message));
         } else {
-            console.error('WebSocket is not connected.');
+            console.error('WebSocket is not connected. Message not sent:', message);
+            // 可以在这里增加一个消息队列，等重连成功后再发送
         }
     };
 

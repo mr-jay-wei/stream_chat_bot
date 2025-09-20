@@ -1,0 +1,29 @@
+# 使用官方的 Python 3.12 镜像
+FROM python:3.12-slim
+
+# 设置环境变量
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# 设置工作目录
+WORKDIR /app
+
+# --- 关键改动：设置 PYTHONPATH ---
+# 告诉Python，我们的项目代码根目录是/app
+ENV PYTHONPATH=/app
+
+# 复制依赖定义文件
+COPY pyproject.toml ./
+
+# 使用 pip 安装所有依赖项
+RUN pip install --no-cache-dir .
+
+# 复制整个 app 目录到容器中
+# 注意：这次我们是把本地的 app 目录，复制为容器里的 app 目录
+COPY ./app ./app
+
+# 暴露后端服务运行的端口
+EXPOSE 28501
+
+# --- 使用我们最开始的、逻辑上正确的 CMD 命令 ---
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "28501"]
